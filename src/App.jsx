@@ -14,6 +14,7 @@ import Gallery from "./pages/Gallery";
 import Contact from "./pages/Contact";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminLogin from "./pages/AdminLogin";
+import CustomerDashboard from "./pages/CustomerDashboard";
 import { supabase } from "./lib/supabase";
 
 function ProtectedAdminRoute() {
@@ -35,7 +36,6 @@ function ProtectedAdminRoute() {
           return;
         }
 
-        // The backend checks whether this account is an administrator.
         const response = await fetch("/api/admin/bookings", {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
@@ -43,7 +43,6 @@ function ProtectedAdminRoute() {
         });
 
         if (!response.ok) {
-          await supabase.auth.signOut();
           if (active) setAuthorized(false);
           return;
         }
@@ -71,18 +70,74 @@ function ProtectedAdminRoute() {
   return authorized ? <AdminDashboard /> : <Navigate to="/admin/login" replace />;
 }
 
+function ProtectedCustomerRoute() {
+  const [checking, setChecking] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkCustomerAccess() {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error || !session) {
+          if (active) setAuthorized(false);
+          return;
+        }
+
+        // The backend will verify the customer's role and account ownership
+        // when we connect the customer APIs.
+        if (active) setAuthorized(true);
+      } catch (error) {
+        console.error("Customer access check failed:", error);
+        if (active) setAuthorized(false);
+      } finally {
+        if (active) setChecking(false);
+      }
+    }
+
+    checkCustomerAccess();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (checking) {
+    return <div className="admin-access-loading">Verifying customer access...</div>;
+  }
+
+  return authorized ? (
+    <CustomerDashboard />
+  ) : (
+    <Navigate to="/login" replace />
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public website */}
         <Route path="/" element={<Home />} />
         <Route path="/services" element={<Services />} />
         <Route path="/gallery" element={<Gallery />} />
         <Route path="/booking" element={<Booking />} />
         <Route path="/contact" element={<Contact />} />
 
+        {/* Existing admin login and protected dashboard */}
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<ProtectedAdminRoute />} />
+
+        {/* Customer dashboard */}
+        <Route
+          path="/customer"
+          element={<ProtectedCustomerRoute />}
+        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
