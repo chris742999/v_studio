@@ -757,3 +757,143 @@
   .admin-bookings-panel { padding: 18px; }
   .admin-footer { flex-direction: column; align-items: flex-start; }
 }
+/* ========================================
+   CREATE CUSTOMER — ADMIN DASHBOARD
+======================================== */
+
+.admin-customer-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-customer-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding: 24px;
+}
+
+.admin-customer-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: #dce7f8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-customer-form > label input,
+.admin-customer-password-actions input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 13px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  outline: none;
+  background: rgba(8, 15, 35, 0.75);
+  color: #f1f5f9;
+  font: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-customer-form > label input::placeholder {
+  color: #718096;
+}
+
+.admin-customer-form > label input:focus,
+.admin-customer-password-actions input:focus {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+
+.admin-customer-form > button[type="submit"] {
+  justify-self: start;
+  grid-column: 1 / -1;
+}
+
+.admin-customer-form > button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-customer-password {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    rgba(34, 211, 238, 0.08),
+    rgba(139, 92, 246, 0.09)
+  );
+}
+
+.admin-customer-password h4 {
+  margin: 0 0 8px;
+  color: #67e8f9;
+  font-size: 15px;
+}
+
+.admin-customer-password p {
+  margin: 0 0 16px;
+  color: #aab8cc;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.admin-customer-password-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-customer-password-actions input {
+  flex: 1;
+}
+
+.admin-customer-password-actions button {
+  flex-shrink: 0;
+}
+
+.admin-customer-form .admin-bookings-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #fca5a5;
+}
+
+.admin-customer-form > p[role="status"] {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #6ee7b7;
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .admin-customer-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .admin-customer-form {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .admin-customer-form > button[type="submit"],
+  .admin-customer-password {
+    grid-column: 1;
+  }
+
+  .admin-customer-password-actions {
+    flex-wrap: wrap;
+  }
+
+  .admin-customer-password-actions input {
+    flex-basis: 100%;
+  }
+}

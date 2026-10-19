@@ -1,5 +1,7 @@
 
 import express from "express";
+import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "node:crypto";
 import { pool } from "./db.js";
 import {
   authenticateUser,
@@ -8,8 +10,157 @@ import {
 
 const router = express.Router();
 
-// Every route in this file requires a verified admin.
+const supabaseAdmin =
+  process.env.SUPABASE_URL &&
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        }
+      )
+    : null;
+
+// Every route in this file requires a verified administrator.
 router.use(authenticateUser, requireAdmin);
+
+// POST /api/admin/customers
+// Create a customer account with a temporary password.
+router.post("/customers", async (req, res) => {
+  let createdAuthUserId = null;
+
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({
+        error: "Customer account creation is not configured.",
+      });
+    }
+
+    const { full_name, email, phone } = req.body ?? {};
+
+    if (
+      typeof full_name !== "string" ||
+      !full_name.trim() ||
+      typeof email !== "string" ||
+      !email.trim()
+    ) {
+      return res.status(400).json({
+        error: "Customer full name and email are required.",
+      });
+    }
+
+    if (
+      phone !== undefined &&
+      phone !== null &&
+      typeof phone !== "string"
+    ) {
+      return res.status(400).json({
+        error: "Invalid phone number.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedName = full_name.trim();
+    const normalizedPhone =
+      typeof phone === "string" ? phone.trim() || null : null;
+
+    const temporaryPassword = randomBytes(18).toString("base64url");
+
+    const { data: authData, error: authError } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: normalizedEmail,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: normalizedName,
+        },
+        app_metadata: {
+          must_change_password: true,
+        },
+      });
+
+    if (authError) {
+      if (
+        authError.message?.toLowerCase().includes("already")
+      ) {
+        return res.status(409).json({
+          error: "An account with this email may already exist.",
+        });
+      }
+
+      console.error(
+        "Creating customer authentication account failed:",
+        authError.message
+      );
+
+      return res.status(400).json({
+        error: "Unable to create the customer account.",
+      });
+    }
+
+    if (!authData.user?.id) {
+      return res.status(500).json({
+        error: "The authentication account could not be verified.",
+      });
+    }
+
+    createdAuthUserId = authData.user.id;
+
+    const customerResult = await pool.query(
+      `INSERT INTO public.customers
+         (auth_user_id, full_name, email, phone)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, auth_user_id, full_name, email, phone, created_at`,
+      [
+        createdAuthUserId,
+        normalizedName,
+        normalizedEmail,
+        normalizedPhone,
+      ]
+    );
+
+    return res.status(201).json({
+      message: "Customer account created successfully.",
+      customer: customerResult.rows[0],
+      temporaryPassword,
+    });
+  } catch (error) {
+    console.error(
+      "Creating customer account failed:",
+      error.message
+    );
+
+    // If saving the customer record fails, remove the Auth user.
+    if (createdAuthUserId && supabaseAdmin) {
+      try {
+        const { error: cleanupError } =
+          await supabaseAdmin.auth.admin.deleteUser(
+            createdAuthUserId
+          );
+
+        if (cleanupError) {
+          console.error(
+            "Customer account cleanup failed:",
+            cleanupError.message
+          );
+        }
+      } catch (cleanupError) {
+        console.error(
+          "Customer account cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+
+    return res.status(500).json({
+      error: "Unable to complete customer account creation.",
+    });
+  }
+});
 
 // GET /api/admin/bookings
 router.get("/bookings", async (req, res) => {
@@ -31,11 +182,16 @@ router.get("/bookings", async (req, res) => {
        ORDER BY created_at DESC`
     );
 
-    res.json({ bookings: result.rows });
+    return res.json({
+      bookings: result.rows,
+    });
   } catch (error) {
-    console.error("Fetching admin bookings failed:", error.message);
+    console.error(
+      "Fetching admin bookings failed:",
+      error.message
+    );
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Unable to retrieve bookings.",
     });
   }
@@ -80,14 +236,17 @@ router.patch("/bookings/:id/status", async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       message: "Booking status updated successfully.",
       booking: result.rows[0],
     });
   } catch (error) {
-    console.error("Updating booking status failed:", error.message);
+    console.error(
+      "Updating booking status failed:",
+      error.message
+    );
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Unable to update booking status.",
     });
   }

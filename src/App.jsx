@@ -15,6 +15,7 @@ import Contact from "./pages/Contact";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminLogin from "./pages/AdminLogin";
 import CustomerDashboard from "./pages/CustomerDashboard";
+import ChangePassword from "./pages/ChangePassword";
 import { supabase } from "./lib/supabase";
 
 function ProtectedAdminRoute() {
@@ -50,6 +51,7 @@ function ProtectedAdminRoute() {
         if (active) setAuthorized(true);
       } catch (error) {
         console.error("Admin access check failed:", error);
+
         if (active) setAuthorized(false);
       } finally {
         if (active) setChecking(false);
@@ -64,15 +66,24 @@ function ProtectedAdminRoute() {
   }, []);
 
   if (checking) {
-    return <div className="admin-access-loading">Verifying admin access...</div>;
+    return (
+      <div className="admin-access-loading">
+        Verifying admin access...
+      </div>
+    );
   }
 
-  return authorized ? <AdminDashboard /> : <Navigate to="/admin/login" replace />;
+  return authorized ? (
+    <AdminDashboard />
+  ) : (
+    <Navigate to="/admin/login" replace />
+  );
 }
 
 function ProtectedCustomerRoute() {
   const [checking, setChecking] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [redirectTo, setRedirectTo] = useState("/login");
 
   useEffect(() => {
     let active = true;
@@ -85,16 +96,47 @@ function ProtectedCustomerRoute() {
         } = await supabase.auth.getSession();
 
         if (error || !session) {
-          if (active) setAuthorized(false);
+          if (active) {
+            setAuthorized(false);
+            setRedirectTo("/login");
+          }
           return;
         }
 
-        // The backend will verify the customer's role and account ownership
-        // when we connect the customer APIs.
-        if (active) setAuthorized(true);
+        const response = await fetch(
+          "/api/auth/customer-session",
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          if (active) {
+            setAuthorized(false);
+
+            setRedirectTo(
+              result.code === "PASSWORD_CHANGE_REQUIRED"
+                ? "/change-password"
+                : "/login"
+            );
+          }
+          return;
+        }
+
+        if (active) {
+          setAuthorized(true);
+        }
       } catch (error) {
         console.error("Customer access check failed:", error);
-        if (active) setAuthorized(false);
+
+        if (active) {
+          setAuthorized(false);
+          setRedirectTo("/login");
+        }
       } finally {
         if (active) setChecking(false);
       }
@@ -108,13 +150,17 @@ function ProtectedCustomerRoute() {
   }, []);
 
   if (checking) {
-    return <div className="admin-access-loading">Verifying customer access...</div>;
+    return (
+      <div className="admin-access-loading">
+        Verifying customer access...
+      </div>
+    );
   }
 
   return authorized ? (
     <CustomerDashboard />
   ) : (
-    <Navigate to="/login" replace />
+    <Navigate to={redirectTo} replace />
   );
 }
 
@@ -129,17 +175,37 @@ function App() {
         <Route path="/booking" element={<Booking />} />
         <Route path="/contact" element={<Contact />} />
 
-        {/* Existing admin login and protected dashboard */}
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin" element={<ProtectedAdminRoute />} />
+        {/* Shared login */}
+        <Route
+          path="/login"
+          element={<AdminLogin />}
+        />
 
-        {/* Customer dashboard */}
+        {/* Admin login and protected dashboard */}
+        <Route
+          path="/admin/login"
+          element={<AdminLogin />}
+        />
+        <Route
+          path="/admin"
+          element={<ProtectedAdminRoute />}
+        />
+
+        {/* Customer password change and protected dashboard */}
+        <Route
+          path="/change-password"
+          element={<ChangePassword />}
+        />
         <Route
           path="/customer"
           element={<ProtectedCustomerRoute />}
         />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Unknown routes */}
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
       </Routes>
     </BrowserRouter>
   );

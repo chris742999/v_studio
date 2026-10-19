@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
+import {
+  UserPlus,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+} from "lucide-react";import { supabase } from "../lib/supabase";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -342,6 +348,19 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [customerSearch, setCustomerSearch] = useState("");
+    // Create customer account
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+  });
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [createCustomerError, setCreateCustomerError] = useState("");
+  const [createCustomerSuccess, setCreateCustomerSuccess] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1491,6 +1510,75 @@ function AdminDashboard() {
       </>
     );
   };
+  const handleCreateCustomer = async (event) => {
+  event.preventDefault();
+
+  setCreatingCustomer(true);
+  setCreateCustomerError("");
+  setCreateCustomerSuccess("");
+  setTemporaryPassword("");
+  setShowTemporaryPassword(false);
+  setCopySuccess(false);
+
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      throw sessionError;
+    }
+
+    if (!session?.access_token) {
+      throw new Error("Your session has expired. Please log in again.");
+    }
+
+    const response = await fetch("/api/admin/customers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        full_name: newCustomer.full_name.trim(),
+        email: newCustomer.email.trim(),
+        phone: newCustomer.phone.trim(),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Unable to create the customer account."
+      );
+    }
+
+    if (!data.temporaryPassword) {
+      throw new Error(
+        "The account response did not include a temporary password. Check the backend response."
+      );
+    }
+
+    setTemporaryPassword(data.temporaryPassword);
+    setCreateCustomerSuccess(
+      `Customer account created successfully for ${newCustomer.email.trim()}.`
+    );
+
+    setNewCustomer({
+      full_name: "",
+      email: "",
+      phone: "",
+    });
+  } catch (error) {
+    setCreateCustomerError(
+      error.message || "Something went wrong while creating the account."
+    );
+  } finally {
+    setCreatingCustomer(false);
+  }
+};
 
   /* ---------------------------------------------------------------- */
   /* Page: Customers                                                  */
@@ -1531,20 +1619,193 @@ function AdminDashboard() {
     return (
       <>
         <PageHeader
-          eyebrow="Client relationships"
-          title="Customers"
-          description="Everyone who has booked a Visionary Studios session, ranked by lifetime value."
-        >
-          <div className="admin-booking-controls">
+  eyebrow="Client relationships"
+  title="Customers"
+  description="Everyone who has booked a Visionary Studios session, ranked by lifetime value."
+>
+  <div className="admin-customer-header-actions">
+    <button
+      type="button"
+      className="admin-view-all"
+      onClick={() => {
+        setShowCreateCustomer(true);
+        setCreateCustomerError("");
+        setCreateCustomerSuccess("");
+      }}
+    >
+      <UserPlus size={16} />
+      Create customer
+    </button>
+
+    <div className="admin-booking-controls">
+      <input
+        type="search"
+        placeholder="Search name, email or phone..."
+        value={customerSearch}
+        onChange={(event) => setCustomerSearch(event.target.value)}
+        aria-label="Search customers"
+      />
+    </div>
+  </div>
+</PageHeader>
+{showCreateCustomer && (
+  <section className="admin-bookings-panel">
+    <div className="admin-panel-header">
+      <div>
+        <h3>Create customer account</h3>
+        <p>
+          Create a login for a customer. Their temporary password will appear
+          after successful creation.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        className="admin-view-all"
+        onClick={() => {
+          setShowCreateCustomer(false);
+          setCreateCustomerError("");
+          setCreateCustomerSuccess("");
+          setTemporaryPassword("");
+          setShowTemporaryPassword(false);
+          setCopySuccess(false);
+        }}
+        aria-label="Close customer creation form"
+      >
+        <X size={16} />
+        Close
+      </button>
+    </div>
+
+    <form
+      className="admin-customer-form"
+onSubmit={handleCreateCustomer}    >
+      <label>
+        Full name
+        <input
+          type="text"
+          value={newCustomer.full_name}
+          onChange={(event) =>
+            setNewCustomer({
+              ...newCustomer,
+              full_name: event.target.value,
+            })
+          }
+          placeholder="Customer's full name"
+          autoComplete="name"
+          required
+        />
+      </label>
+
+      <label>
+        Email address
+        <input
+          type="email"
+          value={newCustomer.email}
+          onChange={(event) =>
+            setNewCustomer({
+              ...newCustomer,
+              email: event.target.value,
+            })
+          }
+          placeholder="customer@example.com"
+          autoComplete="email"
+          required
+        />
+      </label>
+
+      <label>
+        Phone number
+        <input
+          type="tel"
+          value={newCustomer.phone}
+          onChange={(event) =>
+            setNewCustomer({
+              ...newCustomer,
+              phone: event.target.value,
+            })
+          }
+          placeholder="Optional phone number"
+          autoComplete="tel"
+        />
+      </label>
+
+      {createCustomerError && (
+        <p className="admin-bookings-error" role="alert">
+          {createCustomerError}
+        </p>
+      )}
+
+      {createCustomerSuccess && (
+        <p role="status">{createCustomerSuccess}</p>
+      )}
+
+      {temporaryPassword && (
+        <div className="admin-customer-password">
+          <h4>Temporary password</h4>
+          <p>
+            Share this password privately with the customer. They will be
+            required to change it when they first sign in.
+          </p>
+
+          <div className="admin-customer-password-actions">
             <input
-              type="search"
-              placeholder="Search name, email or phone..."
-              value={customerSearch}
-              onChange={(event) => setCustomerSearch(event.target.value)}
-              aria-label="Search customers"
+              type={showTemporaryPassword ? "text" : "password"}
+              value={temporaryPassword}
+              readOnly
+              aria-label="Temporary customer password"
             />
+
+            <button
+              type="button"
+              className="admin-view-all"
+              onClick={() =>
+                setShowTemporaryPassword(!showTemporaryPassword)
+              }
+              aria-label={
+                showTemporaryPassword ? "Hide password" : "Show password"
+              }
+            >
+              {showTemporaryPassword ? (
+                <EyeOff size={16} />
+              ) : (
+                <Eye size={16} />
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="admin-view-all"
+              onClick={async () => {
+  try {
+    await navigator.clipboard.writeText(temporaryPassword);
+    setCopySuccess(true);
+  } catch (error) {
+    setCopySuccess(false);
+    setCreateCustomerError(
+      "Unable to copy the password. Please select and copy it manually."
+    );
+  }
+}}
+            >
+              {copySuccess ? <Check size={16} /> : <Copy size={16} />}
+              {copySuccess ? "Copied" : "Copy password"}
+            </button>
           </div>
-        </PageHeader>
+        </div>
+      )}
+
+      <button
+        type="submit"
+        className="admin-view-all"
+        disabled={creatingCustomer}
+      >
+        <UserPlus size={16} />
+        {creatingCustomer ? "Creating account..." : "Create account"}
+      </button>
+    </form>
+  </section>
+)}
 
         <section className="admin-stats-grid">
           {customerCards.map((card) =>
@@ -1778,6 +2039,7 @@ function AdminDashboard() {
       </section>
     </>
   );
+
 
   /* ---------------------------------------------------------------- */
   /* Page: Settings                                                   */

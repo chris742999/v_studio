@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Camera,
@@ -25,10 +25,101 @@ const navigation = [
   { label: "My Profile", icon: UserRound },
 ];
 
+function getTimeGreeting(date = new Date()) {
+  const hour = date.getHours();
+
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function CustomerDashboard() {
   const [activeSection, setActiveSection] = useState("Overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [bookings, setBookings] = useState([]);
+
+  const [customer, setCustomer] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
+
+  const greeting = getTimeGreeting();
+  const firstName = customer?.full_name?.trim().split(/\s+/)[0] || "";
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCustomerProfile() {
+      setProfileLoading(true);
+      setProfileError("");
+
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) {
+          throw authError;
+        }
+
+        if (!user) {
+          throw new Error("Please sign in to view your customer profile.");
+        }
+
+        const { data, error } = await supabase
+          .from("customers")
+          .select("id, auth_user_id, full_name, email, phone")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data) {
+          throw new Error(
+            "Your customer profile was not found. Please contact Visionary Studios."
+          );
+        }
+
+        if (active) {
+          setCustomer(data);
+          const { data: bookingData, error: bookingError } = await supabase
+            .from("bookings")
+            .select(
+              "id, full_name, service, preferred_date, preferred_time, location, status, created_at"
+            )
+            .eq("customer_id", data.id)
+            .order("created_at", { ascending: false });
+
+          if (bookingError) {
+            throw bookingError;
+          }
+
+          if (active) {
+            setBookings(bookingData || []);
+          }
+        }
+      } catch (error) {
+        console.error("Customer profile loading failed:", error.message);
+
+        if (active) {
+          setProfileError(error.message || "Unable to load your profile.");
+        }
+      } finally {
+        if (active) {
+          setProfileLoading(false);
+        }
+      }
+    }
+
+    loadCustomerProfile();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -148,7 +239,11 @@ function CustomerDashboard() {
                   <span className="customer-eyebrow">
                     YOUR VISIONARY EXPERIENCE
                   </span>
-                  <h1>Your moments. Your memories.</h1>
+                  <h1>
+                    {customer
+                      ? `${greeting}, ${firstName || "there"}!`
+                      : `${greeting}!`}
+                  </h1>
                   <p>
                     Manage your photography sessions and discover your
                     exclusive customer rewards.
@@ -177,8 +272,8 @@ function CustomerDashboard() {
                     <CalendarDays size={22} />
                   </div>
                   <span>Total bookings</span>
-                  <strong>—</strong>
-                  <small>Loading account data soon</small>
+                  <strong>{profileLoading ? "—" : bookings.length}</strong>
+                  <small>Bookings linked to your account</small>
                 </article>
 
                 <article className="customer-stat-card">
@@ -226,6 +321,7 @@ function CustomerDashboard() {
                     <h2>Recent bookings</h2>
                     <p>Your latest photography and videography sessions.</p>
                   </div>
+
                   <button
                     className="customer-text-button"
                     onClick={() => setActiveSection("My Bookings")}
@@ -233,19 +329,67 @@ function CustomerDashboard() {
                     View all <ChevronRight size={16} />
                   </button>
                 </div>
-                <div className="customer-empty-state">
-                  <div className="customer-empty-icon">
-                    <CalendarDays size={27} />
+
+                {profileLoading ? (
+                  <div className="customer-empty-state">
+                    <p>Loading your recent bookings...</p>
                   </div>
-                  <h3>Your bookings will appear here</h3>
-                  <p>
-                    Once your account is connected, you can view your
-                    bookings and track their status here.
-                  </p>
-                  <a href="/booking" className="customer-outline-button">
-                    Book your first session
-                  </a>
-                </div>
+                ) : profileError ? (
+                  <div className="customer-empty-state">
+                    <h3>Unable to load recent bookings</h3>
+                    <p>{profileError}</p>
+                  </div>
+                ) : bookings.length === 0 ? (
+                  <div className="customer-empty-state">
+                    <div className="customer-empty-icon">
+                      <CalendarDays size={27} />
+                    </div>
+                    <h3>No bookings yet</h3>
+                    <p>Your future sessions will appear here.</p>
+                    <a href="/booking" className="customer-outline-button">
+                      Book your first session
+                    </a>
+                  </div>
+                ) : (
+                  <div className="customer-booking-list">
+                    {bookings.slice(0, 3).map((booking) => (
+                      <article
+                        className="customer-booking-card"
+                        key={booking.id}
+                      >
+                        <div className="customer-booking-heading">
+                          <div>
+                            <h3>{booking.service || "Photography session"}</h3>
+                            <small>
+                              {booking.preferred_date
+                                ? new Date(
+                                    `${booking.preferred_date}T00:00:00`
+                                  ).toLocaleDateString()
+                                : "Date not specified"}
+                            </small>
+                          </div>
+
+                          <span
+                            className={`customer-booking-status status-${(
+                              booking.status || "pending"
+                            )
+                              .toLowerCase()
+                              .replace(/[^a-z0-9]+/g, "-")}`}
+                          >
+                            {booking.status || "Pending"}
+                          </span>
+                        </div>
+                      </article>
+                    ))}
+
+                    <button
+                      className="customer-text-button"
+                      onClick={() => setActiveSection("My Bookings")}
+                    >
+                      View all bookings <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
               </section>
             </>
           )}
@@ -258,17 +402,79 @@ function CustomerDashboard() {
                 View your upcoming sessions, previous bookings and booking
                 status.
               </p>
-              <div className="customer-empty-state">
-                <CalendarDays size={32} />
-                <h3>Your bookings will appear here</h3>
-                <p>
-                  Your personal booking records will be displayed after the
-                  dashboard is connected to your account.
-                </p>
-                <a href="/booking" className="customer-primary-button">
-                  Book a session
-                </a>
-              </div>
+
+              {profileLoading ? (
+                <div className="customer-empty-state">
+                  <p>Loading your bookings...</p>
+                </div>
+              ) : profileError ? (
+                <div className="customer-empty-state">
+                  <CalendarDays size={32} />
+                  <h3>Unable to load bookings</h3>
+                  <p>{profileError}</p>
+                </div>
+              ) : bookings.length === 0 ? (
+                <div className="customer-empty-state">
+                  <CalendarDays size={32} />
+                  <h3>No bookings yet</h3>
+                  <p>
+                    When you make a booking while signed in to your account,
+                    your sessions will appear here.
+                  </p>
+                  <a href="/booking" className="customer-primary-button">
+                    Book a session
+                  </a>
+                </div>
+              ) : (
+                <div className="customer-booking-list">
+                  {bookings.map((booking) => (
+                    <article className="customer-booking-card" key={booking.id}>
+                      <div className="customer-booking-heading">
+                        <div>
+                          <span className="customer-eyebrow">SERVICE</span>
+                          <h3>{booking.service || "Photography session"}</h3>
+                        </div>
+
+                        <span
+                          className={`customer-booking-status status-${(
+                            booking.status || "pending"
+                          )
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, "-")}`}
+                        >
+                          {booking.status || "Pending"}
+                        </span>
+                      </div>
+
+                      <div className="customer-booking-details">
+                        <p>
+                          <CalendarDays size={16} />
+                          <span>
+                            <strong>Date:</strong>{" "}
+                            {booking.preferred_date
+                              ? new Date(
+                                  `${booking.preferred_date}T00:00:00`
+                                ).toLocaleDateString()
+                              : "Not specified"}
+                          </span>
+                        </p>
+
+                        {booking.preferred_time && (
+                          <p>
+                            <strong>Time:</strong> {booking.preferred_time}
+                          </p>
+                        )}
+
+                        {booking.location && (
+                          <p>
+                            <strong>Location:</strong> {booking.location}
+                          </p>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
@@ -286,7 +492,9 @@ function CustomerDashboard() {
                   <Gift size={25} />
                   <span>AVAILABLE POINTS</span>
                 </div>
-                <strong>— <small>points</small></strong>
+                <strong>
+                  — <small>points</small>
+                </strong>
                 <p>Your real points balance will appear here.</p>
                 <div className="customer-points-value">
                   <Wallet size={18} />
@@ -307,21 +515,30 @@ function CustomerDashboard() {
                     <Camera size={22} />
                   </div>
                   <h3>Book a session</h3>
-                  <p>Earn 1 point for every KSh 100 spent on an eligible booking once completed and paid.</p>
+                  <p>
+                    Earn 1 point for every KSh 100 spent on an eligible booking
+                    once completed and paid.
+                  </p>
                 </article>
                 <article className="customer-earning-card">
                   <div className="customer-stat-icon purple">
                     <UserRound size={22} />
                   </div>
                   <h3>Join the rewards club</h3>
-                  <p>Receive 50 welcome points when you create your customer account.</p>
+                  <p>
+                    Receive 50 welcome points when you create your customer
+                    account.
+                  </p>
                 </article>
                 <article className="customer-earning-card">
                   <div className="customer-stat-icon cyan">
                     <Gift size={22} />
                   </div>
                   <h3>Refer a friend</h3>
-                  <p>Earn 200 bonus points when your referred customer completes a qualifying paid booking.</p>
+                  <p>
+                    Earn 200 bonus points when your referred customer completes
+                    a qualifying paid booking.
+                  </p>
                 </article>
               </div>
 
@@ -357,14 +574,43 @@ function CustomerDashboard() {
               <span className="customer-eyebrow">YOUR ACCOUNT</span>
               <h1>My Profile</h1>
               <p>Manage your customer account and personal information.</p>
-              <div className="customer-empty-state">
-                <Settings size={32} />
-                <h3>Your profile settings</h3>
-                <p>
-                  Your verified account details and profile editing options
-                  will be connected in a later step.
-                </p>
-              </div>
+
+              {profileLoading ? (
+                <div className="customer-empty-state">
+                  <p>Loading your profile...</p>
+                </div>
+              ) : profileError ? (
+                <div className="customer-empty-state">
+                  <UserRound size={32} />
+                  <h3>Unable to load profile</h3>
+                  <p>{profileError}</p>
+                </div>
+              ) : customer ? (
+                <div className="customer-empty-state">
+                  <UserRound size={32} />
+                  <h3>{customer.full_name || "Customer"}</h3>
+
+                  <div className="customer-profile-details">
+                    <p>
+                      <strong>Full name:</strong>{" "}
+                      {customer.full_name || "Not provided"}
+                    </p>
+
+                    <p>
+                      <strong>Email:</strong> {customer.email || "Not provided"}
+                    </p>
+
+                    <p>
+                      <strong>Phone:</strong> {customer.phone || "Not provided"}
+                    </p>
+                  </div>
+
+                  <p>
+                    These details are loaded from your Visionary Studios
+                    customer account.
+                  </p>
+                </div>
+              ) : null}
             </section>
           )}
 

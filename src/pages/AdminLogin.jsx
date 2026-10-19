@@ -1,7 +1,12 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, Eye, EyeOff, LockKeyhole } from "lucide-react";
+import {
+  Camera,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
 import "./AdminLogin.css";
 
@@ -31,15 +36,71 @@ function AdminLogin() {
       }
 
       if (!data.session) {
-        throw new Error("Login succeeded, but no session was created.");
+        throw new Error(
+          "Login succeeded, but no session was created."
+        );
       }
 
-      navigate("/admin", { replace: true });
+      const user = data.session.user;
+
+      // Customers using a temporary password must change it first.
+      if (user.app_metadata?.must_change_password === true) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${data.session.access_token}`,
+      };
+
+      // First, check whether the account is an administrator.
+      const adminResponse = await fetch("/api/admin/bookings", {
+        headers,
+      });
+
+      if (adminResponse.ok) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+
+      if (
+        adminResponse.status !== 401 &&
+        adminResponse.status !== 403
+      ) {
+        throw new Error(
+          "Unable to verify your account permissions. Please try again."
+        );
+      }
+
+      // If not an admin, verify the customer account through the backend.
+      const customerResponse = await fetch(
+        "/api/auth/customer-session",
+        { headers }
+      );
+
+      const customerResult = await customerResponse.json();
+
+      if (!customerResponse.ok) {
+        if (
+          customerResult.code === "PASSWORD_CHANGE_REQUIRED"
+        ) {
+          navigate("/change-password", { replace: true });
+          return;
+        }
+
+        throw new Error(
+          customerResult.error ||
+            "This account is not authorized to access the customer dashboard."
+        );
+      }
+
+      navigate("/customer", { replace: true });
     } catch (err) {
       setError(
         err.message === "Invalid login credentials"
           ? "Incorrect email or password."
-          : err.message || "Unable to sign in. Please try again."
+          : err.message ||
+            "Unable to sign in. Please try again."
       );
     } finally {
       setLoading(false);
@@ -63,26 +124,30 @@ function AdminLogin() {
         <div className="admin-login-heading">
           <span className="admin-login-eyebrow">
             <LockKeyhole size={14} />
-            SECURE ADMIN ACCESS
+            SECURE ACCOUNT ACCESS
           </span>
 
           <h1>Welcome back.</h1>
           <p>Sign in to manage your studio and bookings.</p>
         </div>
 
-        <form className="admin-login-form" onSubmit={handleSubmit}>
+        <form
+          className="admin-login-form"
+          onSubmit={handleSubmit}
+        >
           <label htmlFor="admin-email">Email address</label>
           <input
             id="admin-email"
             type="email"
             autoComplete="username"
-            placeholder="admin@example.com"
+            placeholder="Enter your email address"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
           />
 
           <label htmlFor="admin-password">Password</label>
+
           <div className="admin-login-password">
             <input
               id="admin-password"
@@ -96,10 +161,18 @@ function AdminLogin() {
 
             <button
               type="button"
-              onClick={() => setShowPassword((visible) => !visible)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              onClick={() =>
+                setShowPassword((visible) => !visible)
+              }
+              aria-label={
+                showPassword ? "Hide password" : "Show password"
+              }
             >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              {showPassword ? (
+                <EyeOff size={18} />
+              ) : (
+                <Eye size={18} />
+              )}
             </button>
           </div>
 
@@ -119,7 +192,7 @@ function AdminLogin() {
         </form>
 
         <p className="admin-login-footer">
-          Authorized administrators only.
+          Authorized Visionary Studios accounts only.
         </p>
       </section>
     </main>

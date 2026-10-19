@@ -57,6 +57,53 @@ export async function authenticateUser(req, res, next) {
     });
   }
 }
+export async function requireCustomerPasswordChangeComplete(
+  req,
+  res,
+  next
+) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        error: "Authentication required.",
+      });
+    }
+
+    const customerResult = await pool.query(
+      `SELECT id
+       FROM public.customers
+       WHERE auth_user_id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(403).json({
+        error: "Customer account not found.",
+      });
+    }
+
+    if (req.user.app_metadata?.must_change_password === true) {
+      return res.status(403).json({
+        error: "Password change required.",
+        code: "PASSWORD_CHANGE_REQUIRED",
+      });
+    }
+
+    req.customer = customerResult.rows[0];
+
+    next();
+  } catch (error) {
+    console.error(
+      "Customer authorization failed:",
+      error.message
+    );
+
+    return res.status(500).json({
+      error: "Unable to verify customer access.",
+    });
+  }
+}
 
 export async function requireAdmin(req, res, next) {
   try {
