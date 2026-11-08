@@ -5,6 +5,21 @@ export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  // Booking conversation state
+const [bookingStep, setBookingStep] = useState("idle");
+const [bookingDraft, setBookingDraft] = useState({
+  fullName: "",
+  email: "",
+  phone: "",
+  service: "",
+  preferredDate: "",
+  preferredTime: "",
+  location: "",
+  notes: "",
+});
+
+const [bookingSubmitting, setBookingSubmitting] = useState(false);
+const [editingField, setEditingField] = useState(null);
 
   const [messages, setMessages] = useState([
     {
@@ -33,6 +48,89 @@ export default function ChatWidget() {
       },
     ]);
   };
+  // Start a new booking
+const startBooking = () => {
+  setBookingDraft({
+    fullName: "",
+    email: "",
+    phone: "",
+    service: "",
+    preferredDate: "",
+    preferredTime: "",
+    location: "",
+    notes: "",
+  });
+
+  setEditingField(null);
+  setBookingStep("service");
+
+  addMessage(
+    "Absolutely! 📸 Let's make your booking. Which service would you like? You can choose Wedding Photography, Graduation Photography, Birthday Photography, Studio Portraits, Corporate Photography, Product Photography, Drone Photography, or Videography.",
+    "bot"
+  );
+};
+
+// Booking questions
+const bookingQuestions = {
+  service: "Which service would you like to book?",
+  fullName: "Great! What's your full name?",
+  email: "What's your email address?",
+  phone: "What's your phone number?",
+  preferredDate: "What date would you prefer? Please use YYYY-MM-DD (for example, 2026-12-20).",
+  preferredTime: "What time would you prefer? You can also type 'skip'.",
+  location: "Where will the photography or videography take place? You can type 'skip'.",
+  notes: "Any additional instructions or notes for our team? You can type 'skip'.",
+};
+
+// Find the next unanswered booking field
+const getNextBookingStep = (draft) => {
+  const requiredFields = [
+    "service",
+    "fullName",
+    "email",
+    "phone",
+    "preferredDate",
+  ];
+
+  const optionalFields = [
+    "preferredTime",
+    "location",
+    "notes",
+  ];
+
+  return (
+    requiredFields.find((field) => !draft[field]) ||
+    optionalFields.find((field) => !draft[field]) ||
+    "review"
+  );
+};
+
+// Display booking summary
+const formatBookingSummary = (draft) => {
+  const service = studioKnowledge.services.find(
+    (item) => item.name === draft.service
+  );
+
+  const price = service?.price
+    ? `KSh ${service.price.toLocaleString()}`
+    : "Quote required";
+
+  return `Please review your booking details:
+
+📸 Service: ${draft.service}
+💰 Listed price: ${price}
+👤 Name: ${draft.fullName}
+📧 Email: ${draft.email}
+📞 Phone: ${draft.phone}
+📅 Date: ${draft.preferredDate}
+🕒 Time: ${draft.preferredTime || "Not specified"}
+📍 Location: ${draft.location || "Not specified"}
+📝 Notes: ${draft.notes || "None"}
+
+Are these details correct?
+
+Reply YES to confirm, EDIT to correct something, or CANCEL to stop the booking.`;
+};
 
   const findService = (message) => {
     const lowerMessage = message.toLowerCase();
@@ -241,7 +339,253 @@ You can also find us on social media as ${studioKnowledge.contact.socialHandle}.
 
   };
 
- 
+ // Handle the booking conversation
+const handleBookingMessage = async (message) => {
+  const text = message.trim();
+  const lower = text.toLowerCase();
+
+  // Start booking
+  if (
+    bookingStep === "idle" &&
+    /\b(book|booking|reserve|reservation|appointment)\b/i.test(text)
+  ) {
+    startBooking();
+    return;
+  }
+
+  if (bookingStep === "idle") return;
+
+  // Cancel booking at any stage
+  if (/\b(cancel|stop booking|abort)\b/i.test(text)) {
+    setBookingStep("idle");
+    setEditingField(null);
+
+    setBookingDraft({
+      fullName: "",
+      email: "",
+      phone: "",
+      service: "",
+      preferredDate: "",
+      preferredTime: "",
+      location: "",
+      notes: "",
+    });
+
+    addMessage(
+      "Your booking process has been cancelled. No booking was submitted. You can start again whenever you're ready. 😊",
+      "bot"
+    );
+
+    return;
+  }
+
+  // Ask which field the customer wants to edit
+  if (bookingStep === "review" && lower === "edit") {
+    setBookingStep("editField");
+
+    addMessage(
+      "Which detail would you like to change? You can say name, email, phone, service, date, time, location, or notes.",
+      "bot"
+    );
+
+    return;
+  }
+
+  // Identify the field to edit
+  if (bookingStep === "editField") {
+    const fieldAliases = {
+      fullName: ["name", "full name"],
+      email: ["email", "email address"],
+      phone: ["phone", "phone number", "telephone"],
+      service: ["service"],
+      preferredDate: ["date", "preferred date"],
+      preferredTime: ["time", "preferred time"],
+      location: ["location", "event location"],
+      notes: ["notes", "instructions"],
+    };
+
+    const selectedField = Object.entries(fieldAliases).find(
+      ([, aliases]) =>
+        aliases.some((alias) => lower === alias)
+    );
+
+    if (!selectedField) {
+      addMessage(
+        "I couldn't identify that field. Please choose name, email, phone, service, date, time, location, or notes.",
+        "bot"
+      );
+      return;
+    }
+
+    const field = selectedField[0];
+
+    setEditingField(field);
+    setBookingStep(field);
+
+    addMessage(bookingQuestions[field], "bot");
+    return;
+  }
+
+  // Confirm and submit booking
+  if (bookingStep === "review") {
+    if (lower === "yes" || lower === "confirm" || lower === "confirm booking") {
+      if (bookingSubmitting) return;
+
+      setBookingSubmitting(true);
+
+      try {
+        const response = await fetch("http://localhost:3001/api/bookings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...bookingDraft,
+            preferredTime:
+              bookingDraft.preferredTime === "Not specified"
+                ? ""
+                : bookingDraft.preferredTime,
+            location:
+              bookingDraft.location === "Not specified"
+                ? ""
+                : bookingDraft.location,
+            notes:
+              bookingDraft.notes === "Not specified"
+                ? ""
+                : bookingDraft.notes,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to submit your booking."
+          );
+        }
+
+        addMessage(
+          `🎉 Your booking request has been submitted successfully!\n\nBooking ID: ${data.booking.id}\nService: ${data.booking.service}\nDate: ${data.booking.preferred_date}\nStatus: ${data.booking.status}\n\nOur team will review your request and contact you. Thank you for choosing Visionary Studios!`,
+          "bot"
+        );
+
+        setBookingStep("idle");
+        setEditingField(null);
+
+        setBookingDraft({
+          fullName: "",
+          email: "",
+          phone: "",
+          service: "",
+          preferredDate: "",
+          preferredTime: "",
+          location: "",
+          notes: "",
+        });
+      } catch (error) {
+        addMessage(
+          `Sorry, we couldn't submit your booking. ${error.message} You can try confirming again.`,
+          "bot"
+        );
+      } finally {
+        setBookingSubmitting(false);
+      }
+
+      return;
+    }
+
+    addMessage(
+      "Please reply YES to confirm, EDIT to change a detail, or CANCEL to stop.",
+      "bot"
+    );
+
+    return;
+  }
+
+  // Handle the customer's answer to the current question
+  const updatedDraft = { ...bookingDraft };
+  const field = bookingStep;
+
+  if (field === "service") {
+    const selectedService = studioKnowledge.booking.availableServices.find(
+      (service) => service.toLowerCase() === lower
+    );
+
+    if (!selectedService) {
+      addMessage(
+        "Please enter one of these services exactly:\n\n" +
+          studioKnowledge.booking.availableServices.join("\n"),
+        "bot"
+      );
+      return;
+    }
+
+    updatedDraft.service = selectedService;
+  } else if (field === "email") {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+      addMessage("That email doesn't look valid. Please enter a valid email address.", "bot");
+      return;
+    }
+
+    updatedDraft.email = text;
+  } else if (field === "preferredDate") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      addMessage("Please enter the date in YYYY-MM-DD format.", "bot");
+      return;
+    }
+
+    const date = new Date(`${text}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== text
+    ) {
+      addMessage("That doesn't appear to be a valid calendar date. Please try again.", "bot");
+      return;
+    }
+
+    updatedDraft.preferredDate = text;
+  } else if (field === "phone") {
+    if (!/^[+\d\s()-]{7,30}$/.test(text)) {
+      addMessage("Please enter a valid phone number.", "bot");
+      return;
+    }
+
+    updatedDraft.phone = text;
+  } else if (field === "preferredTime") {
+    if (lower === "skip") {
+      updatedDraft.preferredTime = "Not specified";
+    } else if (/^([01]\d|2[0-3]):[0-5]\d$/.test(text)) {
+      updatedDraft.preferredTime = text;
+    } else {
+      addMessage("Please enter a time in HH:MM format (for example, 14:30), or type skip.", "bot");
+      return;
+    }
+  } else if (field === "location" || field === "notes") {
+    updatedDraft[field] =
+      lower === "skip" ? "Not specified" : text;
+  } else if (field === "fullName") {
+    if (text.length < 2 || text.length > 150) {
+      addMessage("Please enter a name between 2 and 150 characters.", "bot");
+      return;
+    }
+
+    updatedDraft.fullName = text;
+  }
+
+  setBookingDraft(updatedDraft);
+  setEditingField(null);
+
+  const nextStep = getNextBookingStep(updatedDraft);
+
+  setBookingStep(nextStep);
+
+  if (nextStep === "review") {
+    addMessage(formatBookingSummary(updatedDraft), "bot");
+  } else {
+    addMessage(bookingQuestions[nextStep], "bot");
+  }
+};
 const handleSend = async (message = input) => {
   const cleanMessage = message.trim();
 
@@ -250,6 +594,21 @@ const handleSend = async (message = input) => {
   addMessage(cleanMessage, "user");
   setInput("");
   setIsTyping(true);
+    if (
+    bookingStep !== "idle" ||
+    /\b(book|booking|reserve|reservation|appointment)\b/i.test(cleanMessage)
+  ) {
+    try {
+      await handleBookingMessage(cleanMessage);
+    } catch (error) {
+      console.error("Booking conversation error:", error);
+      addMessage("Sorry, something went wrong. Please try again.", "bot");
+    } finally {
+      setIsTyping(false);
+    }
+
+    return;
+  }
 
   try {
     const response = await fetch("http://localhost:3001/api/chat", {

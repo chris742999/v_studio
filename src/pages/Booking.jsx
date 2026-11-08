@@ -23,6 +23,7 @@ export default function Booking() {
   });
 
   const [successOpen, setSuccessOpen] = useState(false);
+  const [savedBooking, setSavedBooking] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -58,8 +59,8 @@ export default function Booking() {
         );
       }
 
-      setSuccessOpen(true);
-    } catch (error) {
+setSavedBooking(data.booking);
+setSuccessOpen(true);    } catch (error) {
       console.error("Booking submission failed:", error);
       setErrorMessage(
         error.message ||
@@ -124,10 +125,11 @@ export default function Booking() {
         <ContactCTA />
       </main>
 
-      <SuccessModal
-        open={successOpen}
-        onClose={() => setSuccessOpen(false)}
-      />
+     <SuccessModal
+  open={successOpen}
+  onClose={() => setSuccessOpen(false)}
+  booking={savedBooking}
+/>
     </div>
   );
 }

@@ -59,8 +59,8 @@ router.post("/", async (req, res) => {
       });
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {    
+    return res.status(400).json({
         error: "Please provide a valid email address.",
       });
     }
@@ -80,13 +80,21 @@ router.post("/", async (req, res) => {
     const date = new Date(`${preferredDate}T00:00:00.000Z`);
 
     if (
-      Number.isNaN(date.getTime()) ||
-      date.toISOString().slice(0, 10) !== preferredDate
-    ) {
-      return res.status(400).json({
-        error: "Please provide a valid calendar date.",
-      });
-    }
+  Number.isNaN(date.getTime()) ||
+  date.toISOString().slice(0, 10) !== preferredDate
+) {
+  return res.status(400).json({
+    error: "Please provide a valid calendar date.",
+  });
+}
+
+const today = new Date().toISOString().slice(0, 10);
+
+if (preferredDate < today) {
+  return res.status(400).json({
+    error: "Booking date cannot be in the past.",
+  });
+}
 
     if (
       preferredTime &&

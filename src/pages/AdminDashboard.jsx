@@ -5,7 +5,8 @@ import {
   Check,
   Eye,
   EyeOff,
-} from "lucide-react";import { supabase } from "../lib/supabase";
+} from "lucide-react";
+import { supabase } from "../lib/supabase";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -39,6 +40,15 @@ import {
   X,
   ChevronRight,
   Inbox,
+  UserCog,
+  UserCheck,
+  UserX,
+  UserMinus,
+  Pencil,
+  BarChart3,
+  CalendarClock,
+  ClipboardList,
+  AlertTriangle,
 } from "lucide-react";
 import "./AdminDashboard.css";
 
@@ -50,6 +60,7 @@ const navigation = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Bookings", icon: CalendarDays },
   { label: "Customers", icon: Users },
+  { label: "Staff", icon: UserCog },
   { label: "Services", icon: Camera },
   { label: "Settings", icon: Settings },
 ];
@@ -184,6 +195,162 @@ const bookingKey = (booking, index = 0) =>
   booking?.id ||
   booking?.booking_id ||
   `${booking?.email || booking?.full_name || "booking"}-${index}`;
+
+/* ------------------------------------------------------------------ */
+/* Staff static data + helpers                                        */
+/* ------------------------------------------------------------------ */
+
+const STAFF_POSITIONS = [
+  "Photographer",
+  "Videographer",
+  "Drone Operator",
+  "Photography Assistant",
+];
+
+const POSITION_RESPONSIBILITY = {
+  Photographer: "Photography coverage",
+  Videographer: "Video recording",
+  "Drone Operator": "Aerial footage",
+  "Photography Assistant": "Equipment and production support",
+};
+
+const sampleStaff = [
+  {
+    id: "stf-001",
+    full_name: "Amara Okafor",
+    email: "amara.okafor@visionarystudios.co.ke",
+    phone: "+254 712 345 678",
+    position: "Photographer",
+    status: "active",
+    joined_at: "2024-01-15",
+    seedStats: { assigned: 42, completed: 38, ongoing: 2, cancelled: 2 },
+  },
+  {
+    id: "stf-002",
+    full_name: "Brian Mwangi",
+    email: "brian.mwangi@visionarystudios.co.ke",
+    phone: "+254 723 456 789",
+    position: "Photographer",
+    status: "active",
+    joined_at: "2024-03-04",
+    seedStats: { assigned: 36, completed: 33, ongoing: 2, cancelled: 1 },
+  },
+  {
+    id: "stf-003",
+    full_name: "Chiamaka Adeyemi",
+    email: "chiamaka.a@visionarystudios.co.ke",
+    phone: "+254 734 567 890",
+    position: "Videographer",
+    status: "active",
+    joined_at: "2024-05-20",
+    seedStats: { assigned: 28, completed: 25, ongoing: 2, cancelled: 1 },
+  },
+  {
+    id: "stf-004",
+    full_name: "David Kimani",
+    email: "david.kimani@visionarystudios.co.ke",
+    phone: "+254 745 678 901",
+    position: "Videographer",
+    status: "active",
+    joined_at: "2024-07-11",
+    seedStats: { assigned: 22, completed: 18, ongoing: 3, cancelled: 1 },
+  },
+  {
+    id: "stf-005",
+    full_name: "Esther Wanjiku",
+    email: "esther.wanjiku@visionarystudios.co.ke",
+    phone: "+254 756 789 012",
+    position: "Drone Operator",
+    status: "active",
+    joined_at: "2024-08-02",
+    seedStats: { assigned: 15, completed: 12, ongoing: 2, cancelled: 1 },
+  },
+  {
+    id: "stf-006",
+    full_name: "Farouk Hassan",
+    email: "farouk.hassan@visionarystudios.co.ke",
+    phone: "+254 767 890 123",
+    position: "Drone Operator",
+    status: "active",
+    joined_at: "2024-09-18",
+    seedStats: { assigned: 18, completed: 16, ongoing: 1, cancelled: 1 },
+  },
+  {
+    id: "stf-007",
+    full_name: "Grace Njeri",
+    email: "grace.njeri@visionarystudios.co.ke",
+    phone: "+254 778 901 234",
+    position: "Photography Assistant",
+    status: "active",
+    joined_at: "2024-10-05",
+    seedStats: { assigned: 30, completed: 27, ongoing: 2, cancelled: 1 },
+  },
+  {
+    id: "stf-008",
+    full_name: "Henry Otieno",
+    email: "henry.otieno@visionarystudios.co.ke",
+    phone: "+254 789 012 345",
+    position: "Photographer",
+    status: "inactive",
+    joined_at: "2023-11-12",
+    seedStats: { assigned: 10, completed: 10, ongoing: 0, cancelled: 0 },
+  },
+];
+
+const bookingReference = (booking, index = 0) => {
+  if (booking?.booking_reference) return booking.booking_reference;
+  if (booking?.reference) return booking.reference;
+  const id = String(booking?.id || booking?.booking_id || index);
+  return `VS-${id.slice(-6).toUpperCase().padStart(6, "0")}`;
+};
+
+function buildNextDays(count) {
+  const out = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < count; i += 1) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    out.push({
+      iso: d.toISOString().slice(0, 10),
+      weekday: d.toLocaleDateString("en-KE", { weekday: "short" }),
+      day: d.getDate(),
+    });
+  }
+
+  return out;
+}
+
+function getStaffSchedule(staffId, bookingList, assignmentsMap) {
+  const counts = new Map();
+  const upcoming = [];
+
+  bookingList.forEach((booking) => {
+    const status = (booking.status || "").toLowerCase();
+    if (status === "cancelled" || status === "completed") return;
+
+    const team = assignmentsMap[booking.id];
+    if (!team || !team.some((member) => member.staffId === staffId)) return;
+
+    const date = (booking.preferred_date || booking.booking_date || "").slice(
+      0,
+      10
+    );
+    if (!date) return;
+
+    counts.set(date, (counts.get(date) || 0) + 1);
+    upcoming.push({ booking, date });
+  });
+
+  const busyDates = new Set(counts.keys());
+  const conflictDates = new Set(
+    [...counts.entries()].filter(([, c]) => c > 1).map(([d]) => d)
+  );
+  upcoming.sort((a, b) => a.date.localeCompare(b.date));
+
+  return { busyDates, conflictDates, upcoming };
+}
 
 /* ------------------------------------------------------------------ */
 /* Shared pieces                                                       */
@@ -348,7 +515,8 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [customerSearch, setCustomerSearch] = useState("");
-    // Create customer account
+
+  // Create customer account
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     full_name: "",
@@ -377,6 +545,32 @@ function AdminDashboard() {
     weeklySummary: false,
     marketing: false,
   });
+
+  /* ---------------------------------------------------------------- */
+  /* Staff management state                                          */
+  /* ---------------------------------------------------------------- */
+
+  const [staff, setStaff] = useState(sampleStaff);
+  const [staffTab, setStaffTab] = useState("directory");
+  const [staffSearch, setStaffSearch] = useState("");
+  const [staffPositionFilter, setStaffPositionFilter] = useState("all");
+  const [staffStatusFilter, setStaffStatusFilter] = useState("all");
+
+  const [showAddStaff, setShowAddStaff] = useState(false);
+  const [editingStaff, setEditingStaff] = useState(null);
+  const [newStaff, setNewStaff] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    position: "",
+  });
+  const [staffFormError, setStaffFormError] = useState("");
+  const [viewingStaff, setViewingStaff] = useState(null);
+
+  const [assignments, setAssignments] = useState({});
+  const [assigningBooking, setAssigningBooking] = useState(null);
+  const [assignmentDraft, setAssignmentDraft] = useState([]);
+  const [assignmentError, setAssignmentError] = useState("");
 
   /* ---------------------------------------------------------------- */
   /* Navigation                                                       */
@@ -438,15 +632,126 @@ function AdminDashboard() {
       }
     }
   }, []);
+  const loadStaff = useCallback(async () => {
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-  useEffect(() => {
-    mountedRef.current = true;
-    loadBookings();
+    if (sessionError) throw sessionError;
 
-    return () => {
-      mountedRef.current = false;
-    };
-  }, [loadBookings]);
+    if (!session?.access_token) {
+      throw new Error("Your session has expired. Please log in again.");
+    }
+
+    const response = await fetch("/api/admin/staff", {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to load staff members.");
+    }
+
+    if (!mountedRef.current) return;
+
+    setStaff(
+      Array.isArray(data.staff)
+        ? data.staff.map((member) => ({
+            ...member,
+            id: String(member.id),
+            joined_at: member.created_at,
+          }))
+        : []
+    );
+  } catch (error) {
+    console.error("Unable to load staff:", error.message);
+    setActionError(error.message || "Unable to load staff members.");
+  }
+}, []);
+
+ useEffect(() => {
+  mountedRef.current = true;
+
+  loadBookings();
+  loadStaff();
+
+  return () => {
+    mountedRef.current = false;
+  };
+}, [loadBookings, loadStaff]);
+
+useEffect(() => {
+  if (bookings.length === 0) {
+    setAssignments({});
+    return;
+  }
+
+  let cancelled = false;
+
+  async function loadAssignments() {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    if (!session?.access_token) {
+      throw new Error("Your session has expired. Please log in again.");
+    }
+
+    const results = await Promise.all(
+      bookings.map(async (booking) => {
+        const response = await fetch(
+          `/api/admin/bookings/${booking.id}/assignments`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to load booking assignments."
+          );
+        }
+
+        return [
+          String(booking.id),
+          (data.assignments || []).map((item) => ({
+            staffId: String(item.staff_id),
+            responsibility: item.responsibility,
+            status: item.status,
+          })),
+        ];
+      })
+    );
+
+    if (!cancelled && mountedRef.current) {
+      setAssignments(Object.fromEntries(results));
+    }
+  }
+
+  loadAssignments().catch((error) => {
+    if (!cancelled && mountedRef.current) {
+      console.error("Loading assignments failed:", error);
+      setActionError(error.message);
+    }
+  });
+
+  return () => {
+    cancelled = true;
+  };
+}, [bookings]);
+
 
   // Load the logged-in administrator's details.
   useEffect(() => {
@@ -608,6 +913,103 @@ function AdminDashboard() {
   const completionRate = totalBookings
     ? Math.round((completedBookings / totalBookings) * 100)
     : 0;
+
+  /* ---------------------------------------------------------------- */
+  /* Staff derived state                                             */
+  /* ---------------------------------------------------------------- */
+
+  const staffDateIndex = useMemo(() => {
+    const index = new Map();
+
+    bookings.forEach((booking) => {
+      const team = assignments[booking.id];
+      if (!team || team.length === 0) return;
+
+      const date = (booking.preferred_date || booking.booking_date || "").slice(
+        0,
+        10
+      );
+      if (!date) return;
+
+      team.forEach(({ staffId }) => {
+        if (!index.has(staffId)) index.set(staffId, new Map());
+        const staffMap = index.get(staffId);
+        if (!staffMap.has(date)) staffMap.set(date, []);
+        staffMap.get(date).push(booking);
+      });
+    });
+
+    return index;
+  }, [bookings, assignments]);
+
+  const staffCounts = useMemo(() => {
+    const total = staff.length;
+    const active = staff.filter((member) => member.status === "active").length;
+
+    const busyStaffIds = new Set();
+    let currentlyAssigned = 0;
+
+    bookings.forEach((booking) => {
+      const status = (booking.status || "").toLowerCase();
+      if (status === "completed" || status === "cancelled") return;
+      const team = assignments[booking.id];
+      if (!team || team.length === 0) return;
+
+      currentlyAssigned += 1;
+      team.forEach(({ staffId }) => busyStaffIds.add(staffId));
+    });
+
+    const available = staff.filter(
+      (member) => member.status === "active" && !busyStaffIds.has(member.id)
+    ).length;
+
+    return { total, active, currentlyAssigned, available };
+  }, [staff, assignments, bookings]);
+
+  const filteredStaff = useMemo(() => {
+    const search = staffSearch.trim().toLowerCase();
+
+    return staff.filter((member) => {
+      const matchesSearch =
+        !search ||
+        member.full_name.toLowerCase().includes(search) ||
+        member.email.toLowerCase().includes(search);
+
+      const matchesPosition =
+        staffPositionFilter === "all" ||
+        member.position === staffPositionFilter;
+
+      const matchesStatus =
+        staffStatusFilter === "all" || member.status === staffStatusFilter;
+
+      return matchesSearch && matchesPosition && matchesStatus;
+    });
+  }, [staff, staffSearch, staffPositionFilter, staffStatusFilter]);
+
+  const getStaffAssignedCount = (memberId) => {
+    const seed =
+      staff.find((member) => member.id === memberId)?.seedStats?.assigned || 0;
+    const live = Object.values(assignments).filter((team) =>
+      team?.some((member) => member.staffId === memberId)
+    ).length;
+    return seed + live;
+  };
+
+  const getConflictForStaff = (staffId, booking) => {
+    if (!booking) return null;
+
+    const date = (booking.preferred_date || booking.booking_date || "").slice(
+      0,
+      10
+    );
+    if (!date) return null;
+
+    const staffMap = staffDateIndex.get(staffId);
+    const list = staffMap?.get(date);
+    if (!list) return null;
+
+    return list.find((item) => String(item.id) !== String(booking.id)) || null;
+  };
 
   /* ---------------------------------------------------------------- */
   /* Customers derived from bookings                                  */
@@ -787,9 +1189,9 @@ function AdminDashboard() {
             icon: BellRing,
             order: 1,
             title: "Upcoming shoot",
-            message: `${name} · ${booking.service || "Session"} · ${formatBookingDate(
-              booking
-            )}`,
+            message: `${name} · ${
+              booking.service || "Session"
+            } · ${formatBookingDate(booking)}`,
             booking,
           });
         }
@@ -926,6 +1328,310 @@ function AdminDashboard() {
 
     await supabase.auth.signOut();
     window.location.href = "/";
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Staff actions                                                   */
+  /* ---------------------------------------------------------------- */
+
+  function openAddStaff() {
+    setEditingStaff(null);
+    setNewStaff({ full_name: "", email: "", phone: "", position: "" });
+    setStaffFormError("");
+    setShowAddStaff(true);
+  }
+
+  function closeStaffForm() {
+    setShowAddStaff(false);
+    setEditingStaff(null);
+    setNewStaff({ full_name: "", email: "", phone: "", position: "" });
+    setStaffFormError("");
+  }
+
+  function openEditStaff(member) {
+    setEditingStaff(member);
+    setNewStaff({
+      full_name: member.full_name,
+      email: member.email,
+      phone: member.phone,
+      position: member.position,
+    });
+    setStaffFormError("");
+    setShowAddStaff(true);
+  }
+
+  function validateStaffForm(data) {
+    const name = data.full_name.trim();
+    const email = data.email.trim();
+    const phone = data.phone.trim();
+
+    if (name.length < 2) return "Please enter the staff member's full name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return "Please enter a valid email address.";
+    if (phone.length < 7) return "Please enter a valid phone number.";
+    if (!STAFF_POSITIONS.includes(data.position))
+      return "Please select a valid staff position.";
+
+    const duplicate = staff.find(
+      (member) =>
+        member.email.toLowerCase() === email.toLowerCase() &&
+        member.id !== editingStaff?.id
+    );
+    if (duplicate) return "A staff member with this email already exists.";
+
+    return "";
+  }
+
+ 
+async function handleStaffSubmit(event) {
+  event.preventDefault();
+  setStaffFormError("");
+
+  const error = validateStaffForm(newStaff);
+
+  if (error) {
+    setStaffFormError(error);
+    return;
+  }
+
+  const trimmed = {
+    full_name: newStaff.full_name.trim(),
+    email: newStaff.email.trim().toLowerCase(),
+    phone: newStaff.phone.trim(),
+    position: newStaff.position,
+  };
+
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    if (!session?.access_token) {
+      throw new Error("Your session has expired. Please log in again.");
+    }
+
+    const response = await fetch(
+      editingStaff
+        ? `/api/admin/staff/${editingStaff.id}`
+        : "/api/admin/staff",
+      {
+        method: editingStaff ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(trimmed),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to save staff member.");
+    }
+
+    const savedStaff = {
+      ...data.staff,
+      id: String(data.staff.id),
+      joined_at: data.staff.created_at,
+    };
+
+    if (editingStaff) {
+      setStaff((current) =>
+        current.map((member) =>
+          String(member.id) === String(savedStaff.id)
+            ? savedStaff
+            : member
+        )
+      );
+
+      setActionMessage(
+        `${savedStaff.full_name}'s details were updated.`
+      );
+    } else {
+      setStaff((current) => [savedStaff, ...current]);
+
+      setActionMessage(
+        `${savedStaff.full_name} was added to the team.`
+      );
+    }
+
+    setActionError("");
+    closeStaffForm();
+  } catch (error) {
+    setStaffFormError(
+      error.message || "Something went wrong while saving staff."
+    );
+  }
+}
+
+function openAssignment(booking) {
+  setAssigningBooking(booking);
+  setAssignmentError("");
+
+  const existingAssignments = assignments[booking.id] || [];
+
+  setAssignmentDraft(
+    existingAssignments.length > 0
+      ? existingAssignments.map((item) => ({ ...item }))
+      : []
+  );
+}
+function closeAssignment() {
+  setAssigningBooking(null);
+  setAssignmentDraft([]);
+  setAssignmentError("");
+}
+function toggleAssignmentStaff(member) {
+  setAssignmentDraft((current) => {
+    const alreadySelected = current.some(
+      (item) => String(item.staffId) === String(member.id)
+    );
+
+    if (alreadySelected) {
+      return current.filter(
+        (item) => String(item.staffId) !== String(member.id)
+      );
+    }
+
+    return [
+      ...current,
+      {
+        staffId: String(member.id),
+        responsibility: POSITION_RESPONSIBILITY[member.position] || "",
+      },
+    ];
+  });
+} 
+function updateAssignmentResponsibility(staffId, value) {
+    setAssignmentDraft((current) =>
+      current.map((item) =>
+        item.staffId === staffId ? { ...item, responsibility: value } : item
+      )
+    );
+  }
+
+ 
+async function saveAssignment() {
+  if (!assigningBooking) return;
+
+  if (assignmentDraft.length === 0) {
+    setAssignmentError("Select at least one staff member to assign.");
+    return;
+  }
+
+  if (assignmentDraft.some((item) => !item.responsibility.trim())) {
+    setAssignmentError(
+      "Please specify a responsibility for every assigned staff member."
+    );
+    return;
+  }
+
+  const conflicts = assignmentDraft
+    .map((item) => {
+      const conflicting = getConflictForStaff(
+        item.staffId,
+        assigningBooking
+      );
+      return conflicting ? { item, conflicting } : null;
+    })
+    .filter(Boolean);
+
+  if (conflicts.length > 0) {
+    const names = conflicts
+      .map(
+        ({ item }) =>
+          staff.find(
+            (s) => String(s.id) === String(item.staffId)
+          )?.full_name
+      )
+      .filter(Boolean)
+      .join(", ");
+
+    const proceed = window.confirm(
+      `${names} already have a booking on the same day. Save anyway?`
+    );
+
+    if (!proceed) return;
+  }
+
+  try {
+    setAssignmentError("");
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    if (!session?.access_token) {
+      throw new Error("Your session has expired. Please log in again.");
+    }
+
+    const response = await fetch(
+      `/api/admin/bookings/${assigningBooking.id}/assignments`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          assignments: assignmentDraft,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to save assignments.");
+    }
+
+    const savedAssignments = data.assignments.map((item) => ({
+      staffId: String(item.staff_id),
+      responsibility: item.responsibility,
+      status: item.status,
+    }));
+
+    setAssignments((current) => ({
+      ...current,
+      [assigningBooking.id]: savedAssignments,
+    }));
+
+    setActionMessage(
+      `Team assigned to ${assigningBooking.full_name || "this booking"}.`
+    );
+
+    setActionError("");
+    closeAssignment();
+  } catch (error) {
+    setAssignmentError(
+      error.message || "Something went wrong while saving assignments."
+    );
+  }
+}
+
+  function unassignBooking(booking) {
+    if (!assignments[booking.id]) return;
+
+    const confirmed = window.confirm(
+      "Remove all staff assignments for this booking?"
+    );
+    if (!confirmed) return;
+
+    setAssignments((current) => {
+      const next = { ...current };
+      delete next[booking.id];
+      return next;
+    });
+
+    setActionMessage("Assignments cleared for this booking.");
+    setActionError("");
   }
 
   /* ---------------------------------------------------------------- */
@@ -1510,75 +2216,76 @@ function AdminDashboard() {
       </>
     );
   };
+
   const handleCreateCustomer = async (event) => {
-  event.preventDefault();
+    event.preventDefault();
 
-  setCreatingCustomer(true);
-  setCreateCustomerError("");
-  setCreateCustomerSuccess("");
-  setTemporaryPassword("");
-  setShowTemporaryPassword(false);
-  setCopySuccess(false);
+    setCreatingCustomer(true);
+    setCreateCustomerError("");
+    setCreateCustomerSuccess("");
+    setTemporaryPassword("");
+    setShowTemporaryPassword(false);
+    setCopySuccess(false);
 
-  try {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-    if (sessionError) {
-      throw sessionError;
-    }
+      if (sessionError) {
+        throw sessionError;
+      }
 
-    if (!session?.access_token) {
-      throw new Error("Your session has expired. Please log in again.");
-    }
+      if (!session?.access_token) {
+        throw new Error("Your session has expired. Please log in again.");
+      }
 
-    const response = await fetch("/api/admin/customers", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        full_name: newCustomer.full_name.trim(),
-        email: newCustomer.email.trim(),
-        phone: newCustomer.phone.trim(),
-      }),
-    });
+      const response = await fetch("/api/admin/customers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          full_name: newCustomer.full_name.trim(),
+          email: newCustomer.email.trim(),
+          phone: newCustomer.phone.trim(),
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(
-        data.error || "Unable to create the customer account."
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to create the customer account."
+        );
+      }
+
+      if (!data.temporaryPassword) {
+        throw new Error(
+          "The account response did not include a temporary password. Check the backend response."
+        );
+      }
+
+      setTemporaryPassword(data.temporaryPassword);
+      setCreateCustomerSuccess(
+        `Customer account created successfully for ${newCustomer.email.trim()}.`
       );
-    }
 
-    if (!data.temporaryPassword) {
-      throw new Error(
-        "The account response did not include a temporary password. Check the backend response."
+      setNewCustomer({
+        full_name: "",
+        email: "",
+        phone: "",
+      });
+    } catch (error) {
+      setCreateCustomerError(
+        error.message || "Something went wrong while creating the account."
       );
+    } finally {
+      setCreatingCustomer(false);
     }
-
-    setTemporaryPassword(data.temporaryPassword);
-    setCreateCustomerSuccess(
-      `Customer account created successfully for ${newCustomer.email.trim()}.`
-    );
-
-    setNewCustomer({
-      full_name: "",
-      email: "",
-      phone: "",
-    });
-  } catch (error) {
-    setCreateCustomerError(
-      error.message || "Something went wrong while creating the account."
-    );
-  } finally {
-    setCreatingCustomer(false);
-  }
-};
+  };
 
   /* ---------------------------------------------------------------- */
   /* Page: Customers                                                  */
@@ -1619,193 +2326,195 @@ function AdminDashboard() {
     return (
       <>
         <PageHeader
-  eyebrow="Client relationships"
-  title="Customers"
-  description="Everyone who has booked a Visionary Studios session, ranked by lifetime value."
->
-  <div className="admin-customer-header-actions">
-    <button
-      type="button"
-      className="admin-view-all"
-      onClick={() => {
-        setShowCreateCustomer(true);
-        setCreateCustomerError("");
-        setCreateCustomerSuccess("");
-      }}
-    >
-      <UserPlus size={16} />
-      Create customer
-    </button>
-
-    <div className="admin-booking-controls">
-      <input
-        type="search"
-        placeholder="Search name, email or phone..."
-        value={customerSearch}
-        onChange={(event) => setCustomerSearch(event.target.value)}
-        aria-label="Search customers"
-      />
-    </div>
-  </div>
-</PageHeader>
-{showCreateCustomer && (
-  <section className="admin-bookings-panel">
-    <div className="admin-panel-header">
-      <div>
-        <h3>Create customer account</h3>
-        <p>
-          Create a login for a customer. Their temporary password will appear
-          after successful creation.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        className="admin-view-all"
-        onClick={() => {
-          setShowCreateCustomer(false);
-          setCreateCustomerError("");
-          setCreateCustomerSuccess("");
-          setTemporaryPassword("");
-          setShowTemporaryPassword(false);
-          setCopySuccess(false);
-        }}
-        aria-label="Close customer creation form"
-      >
-        <X size={16} />
-        Close
-      </button>
-    </div>
-
-    <form
-      className="admin-customer-form"
-onSubmit={handleCreateCustomer}    >
-      <label>
-        Full name
-        <input
-          type="text"
-          value={newCustomer.full_name}
-          onChange={(event) =>
-            setNewCustomer({
-              ...newCustomer,
-              full_name: event.target.value,
-            })
-          }
-          placeholder="Customer's full name"
-          autoComplete="name"
-          required
-        />
-      </label>
-
-      <label>
-        Email address
-        <input
-          type="email"
-          value={newCustomer.email}
-          onChange={(event) =>
-            setNewCustomer({
-              ...newCustomer,
-              email: event.target.value,
-            })
-          }
-          placeholder="customer@example.com"
-          autoComplete="email"
-          required
-        />
-      </label>
-
-      <label>
-        Phone number
-        <input
-          type="tel"
-          value={newCustomer.phone}
-          onChange={(event) =>
-            setNewCustomer({
-              ...newCustomer,
-              phone: event.target.value,
-            })
-          }
-          placeholder="Optional phone number"
-          autoComplete="tel"
-        />
-      </label>
-
-      {createCustomerError && (
-        <p className="admin-bookings-error" role="alert">
-          {createCustomerError}
-        </p>
-      )}
-
-      {createCustomerSuccess && (
-        <p role="status">{createCustomerSuccess}</p>
-      )}
-
-      {temporaryPassword && (
-        <div className="admin-customer-password">
-          <h4>Temporary password</h4>
-          <p>
-            Share this password privately with the customer. They will be
-            required to change it when they first sign in.
-          </p>
-
-          <div className="admin-customer-password-actions">
-            <input
-              type={showTemporaryPassword ? "text" : "password"}
-              value={temporaryPassword}
-              readOnly
-              aria-label="Temporary customer password"
-            />
-
+          eyebrow="Client relationships"
+          title="Customers"
+          description="Everyone who has booked a Visionary Studios session, ranked by lifetime value."
+        >
+          <div className="admin-customer-header-actions">
             <button
               type="button"
               className="admin-view-all"
-              onClick={() =>
-                setShowTemporaryPassword(!showTemporaryPassword)
-              }
-              aria-label={
-                showTemporaryPassword ? "Hide password" : "Show password"
-              }
+              onClick={() => {
+                setShowCreateCustomer(true);
+                setCreateCustomerError("");
+                setCreateCustomerSuccess("");
+              }}
             >
-              {showTemporaryPassword ? (
-                <EyeOff size={16} />
-              ) : (
-                <Eye size={16} />
-              )}
+              <UserPlus size={16} />
+              Create customer
             </button>
 
-            <button
-              type="button"
-              className="admin-view-all"
-              onClick={async () => {
-  try {
-    await navigator.clipboard.writeText(temporaryPassword);
-    setCopySuccess(true);
-  } catch (error) {
-    setCopySuccess(false);
-    setCreateCustomerError(
-      "Unable to copy the password. Please select and copy it manually."
-    );
-  }
-}}
-            >
-              {copySuccess ? <Check size={16} /> : <Copy size={16} />}
-              {copySuccess ? "Copied" : "Copy password"}
-            </button>
+            <div className="admin-booking-controls">
+              <input
+                type="search"
+                placeholder="Search name, email or phone..."
+                value={customerSearch}
+                onChange={(event) => setCustomerSearch(event.target.value)}
+                aria-label="Search customers"
+              />
+            </div>
           </div>
-        </div>
-      )}
+        </PageHeader>
 
-      <button
-        type="submit"
-        className="admin-view-all"
-        disabled={creatingCustomer}
-      >
-        <UserPlus size={16} />
-        {creatingCustomer ? "Creating account..." : "Create account"}
-      </button>
-    </form>
-  </section>
-)}
+        {showCreateCustomer && (
+          <section className="admin-bookings-panel">
+            <div className="admin-panel-header">
+              <div>
+                <h3>Create customer account</h3>
+                <p>
+                  Create a login for a customer. Their temporary password will
+                  appear after successful creation.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="admin-view-all"
+                onClick={() => {
+                  setShowCreateCustomer(false);
+                  setCreateCustomerError("");
+                  setCreateCustomerSuccess("");
+                  setTemporaryPassword("");
+                  setShowTemporaryPassword(false);
+                  setCopySuccess(false);
+                }}
+                aria-label="Close customer creation form"
+              >
+                <X size={16} />
+                Close
+              </button>
+            </div>
+
+            <form
+              className="admin-customer-form"
+              onSubmit={handleCreateCustomer}
+            >
+              <label>
+                Full name
+                <input
+                  type="text"
+                  value={newCustomer.full_name}
+                  onChange={(event) =>
+                    setNewCustomer({
+                      ...newCustomer,
+                      full_name: event.target.value,
+                    })
+                  }
+                  placeholder="Customer's full name"
+                  autoComplete="name"
+                  required
+                />
+              </label>
+
+              <label>
+                Email address
+                <input
+                  type="email"
+                  value={newCustomer.email}
+                  onChange={(event) =>
+                    setNewCustomer({
+                      ...newCustomer,
+                      email: event.target.value,
+                    })
+                  }
+                  placeholder="customer@example.com"
+                  autoComplete="email"
+                  required
+                />
+              </label>
+
+              <label>
+                Phone number
+                <input
+                  type="tel"
+                  value={newCustomer.phone}
+                  onChange={(event) =>
+                    setNewCustomer({
+                      ...newCustomer,
+                      phone: event.target.value,
+                    })
+                  }
+                  placeholder="Optional phone number"
+                  autoComplete="tel"
+                />
+              </label>
+
+              {createCustomerError && (
+                <p className="admin-bookings-error" role="alert">
+                  {createCustomerError}
+                </p>
+              )}
+
+              {createCustomerSuccess && (
+                <p role="status">{createCustomerSuccess}</p>
+              )}
+
+              {temporaryPassword && (
+                <div className="admin-customer-password">
+                  <h4>Temporary password</h4>
+                  <p>
+                    Share this password privately with the customer. They will be
+                    required to change it when they first sign in.
+                  </p>
+
+                  <div className="admin-customer-password-actions">
+                    <input
+                      type={showTemporaryPassword ? "text" : "password"}
+                      value={temporaryPassword}
+                      readOnly
+                      aria-label="Temporary customer password"
+                    />
+
+                    <button
+                      type="button"
+                      className="admin-view-all"
+                      onClick={() =>
+                        setShowTemporaryPassword(!showTemporaryPassword)
+                      }
+                      aria-label={
+                        showTemporaryPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showTemporaryPassword ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="admin-view-all"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(temporaryPassword);
+                          setCopySuccess(true);
+                        } catch (error) {
+                          setCopySuccess(false);
+                          setCreateCustomerError(
+                            "Unable to copy the password. Please select and copy it manually."
+                          );
+                        }
+                      }}
+                    >
+                      {copySuccess ? <Check size={16} /> : <Copy size={16} />}
+                      {copySuccess ? "Copied" : "Copy password"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="admin-view-all"
+                disabled={creatingCustomer}
+              >
+                <UserPlus size={16} />
+                {creatingCustomer ? "Creating account..." : "Create account"}
+              </button>
+            </form>
+          </section>
+        )}
 
         <section className="admin-stats-grid">
           {customerCards.map((card) =>
@@ -1928,6 +2637,594 @@ onSubmit={handleCreateCustomer}    >
   };
 
   /* ---------------------------------------------------------------- */
+  /* Page: Staff                                                      */
+  /* ---------------------------------------------------------------- */
+
+  const renderStaffDirectory = () => (
+    <section className="admin-bookings-panel">
+      <div className="admin-panel-header">
+        <div>
+          <h2>Staff Directory</h2>
+          <p>
+            {filteredStaff.length} of {staff.length} team member
+            {staff.length === 1 ? "" : "s"} shown.
+          </p>
+        </div>
+
+        <div className="admin-booking-controls">
+          <input
+            type="search"
+            placeholder="Search by name or email..."
+            value={staffSearch}
+            onChange={(event) => setStaffSearch(event.target.value)}
+            aria-label="Search staff"
+          />
+
+          <select
+            value={staffPositionFilter}
+            onChange={(event) => setStaffPositionFilter(event.target.value)}
+            aria-label="Filter by position"
+          >
+            <option value="all">All positions</option>
+            {STAFF_POSITIONS.map((position) => (
+              <option key={position} value={position}>
+                {position}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={staffStatusFilter}
+            onChange={(event) => setStaffStatusFilter(event.target.value)}
+            aria-label="Filter by employment status"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      {staff.length === 0 ? (
+        <EmptyState icon={Users} title="No staff yet">
+          Add your first team member to start building the studio crew.
+        </EmptyState>
+      ) : filteredStaff.length === 0 ? (
+        <EmptyState icon={Users} title="No matching staff">
+          Try a different name, position or employment status.
+        </EmptyState>
+      ) : (
+        <div className="admin-bookings-table-wrap">
+          <table className="admin-bookings-table">
+            <colgroup>
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "16%" }} />
+            </colgroup>
+
+            <thead>
+              <tr>
+                <th>Staff</th>
+                <th>Phone</th>
+                <th>Position</th>
+                <th className="admin-col-center">Jobs</th>
+                <th className="admin-col-center">Status</th>
+                <th className="admin-col-right">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filteredStaff.map((member) => (
+                <tr key={member.id}>
+                  <td>
+                    <div className="admin-customer-cell">
+                      <span className="admin-customer-avatar">
+                        {initials(member.full_name)}
+                      </span>
+
+                      <div className="admin-customer-meta">
+                        <strong>{member.full_name}</strong>
+                        <span>{member.email}</span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td>
+                    <span className="admin-date-cell">{member.phone}</span>
+                  </td>
+
+                  <td>
+                    <span className="admin-service-cell">
+                      {member.position}
+                    </span>
+                  </td>
+
+                  <td className="admin-col-center">
+                    {getStaffAssignedCount(member.id)}
+                  </td>
+
+                  <td className="admin-col-center">
+                    <span
+                      className={`admin-booking-status ${
+                        member.status === "active" ? "confirmed" : "cancelled"
+                      }`}
+                    >
+                      {member.status === "active" ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+
+                  <td className="admin-col-right">
+                    <div className="admin-booking-actions">
+                      <button
+                        type="button"
+                        className="admin-row-button"
+                        onClick={() => setViewingStaff(member)}
+                      >
+                        View
+                      </button>
+
+                      <button
+                        type="button"
+                        className="admin-row-button"
+                        onClick={() => openEditStaff(member)}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`admin-row-button ${
+                          member.status === "active"
+                            ? "admin-row-button--danger"
+                            : ""
+                        }`}
+                        onClick={() => toggleStaffStatus(member)}
+                      >
+                        {member.status === "active"
+                          ? "Deactivate"
+                          : "Reactivate"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+
+  const renderAssignmentsTab = () => {
+    const assignableBookings = bookings.filter(
+      (booking) => (booking.status || "").toLowerCase() !== "cancelled"
+    );
+
+    return (
+      <section className="admin-bookings-panel">
+        <div className="admin-panel-header">
+          <div>
+            <h2>Booking Assignments</h2>
+            <p>
+              Allocate bookings to one or more team members and set each
+              person's responsibility.
+            </p>
+          </div>
+        </div>
+
+        {bookingsLoading ? (
+          <EmptyState icon={Clock3} title="Loading bookings…">
+            Fetching studio bookings to assign.
+          </EmptyState>
+        ) : bookingsError ? (
+          <EmptyState icon={CalendarDays} title="Bookings couldn't be loaded">
+            Confirm the admin API is running and accessible.
+          </EmptyState>
+        ) : assignableBookings.length === 0 ? (
+          <EmptyState icon={CalendarDays} title="No bookings to assign">
+            New booking requests will appear here for team assignment.
+          </EmptyState>
+        ) : (
+          <div className="admin-bookings-table-wrap">
+            <table className="admin-bookings-table">
+              <colgroup>
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "19%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "21%" }} />
+                <col style={{ width: "16%" }} />
+              </colgroup>
+
+              <thead>
+                <tr>
+                  <th>Reference</th>
+                  <th>Customer</th>
+                  <th>Service</th>
+                  <th>Event date</th>
+                  <th>Assigned team</th>
+                  <th className="admin-col-right">Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {assignableBookings.map((booking, index) => {
+                  const team = assignments[booking.id] || [];
+
+                  return (
+                    <tr key={bookingKey(booking, index)}>
+                      <td>
+                        <span className="admin-amount">
+                          {bookingReference(booking, index)}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div className="admin-customer-meta">
+                          <strong>
+                            {booking.full_name || booking.name || "Unnamed"}
+                          </strong>
+                          <span>{booking.email || booking.phone || "—"}</span>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span className="admin-service-cell">
+                          {booking.service || "—"}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className="admin-date-cell">
+                          {formatBookingDate(booking)}
+                        </span>
+                      </td>
+
+                      <td>
+                        {team.length === 0 ? (
+                          <span className="admin-assign-badge admin-assign-badge--empty">
+                            Unassigned
+                          </span>
+                        ) : (
+                          <div className="admin-team-chips">
+                            {team.slice(0, 3).map((item) => {
+                              const member = staff.find(
+                                (s) => s.id === item.staffId
+                              );
+                              if (!member) return null;
+                              return (
+                                <span
+                                  key={item.staffId}
+                                  className="admin-team-chip"
+                                  title={`${member.full_name} — ${item.responsibility}`}
+                                >
+                                  {initials(member.full_name)}
+                                </span>
+                              );
+                            })}
+                            {team.length > 3 && (
+                              <span className="admin-team-chip admin-team-chip--more">
+                                +{team.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="admin-col-right">
+                        <div className="admin-booking-actions">
+                          <button
+                            type="button"
+                            className="admin-row-button"
+                            onClick={() => openAssignment(booking)}
+                          >
+                            {team.length === 0 ? "Assign" : "Reassign"}
+                          </button>
+
+                          {team.length > 0 && (
+                            <button
+                              type="button"
+                              className="admin-row-button"
+                              onClick={() => unassignBooking(booking)}
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const renderAvailabilityTab = () => {
+    const days = buildNextDays(14);
+    const activeStaff = staff.filter((member) => member.status === "active");
+
+    return (
+      <section className="admin-bookings-panel">
+        <div className="admin-panel-header">
+          <div>
+            <h2>Availability & Schedule</h2>
+            <p>
+              Next 14 days. Highlighted days indicate a staff member already has
+              a booking; red days mark a scheduling conflict.
+            </p>
+          </div>
+        </div>
+
+        {activeStaff.length === 0 ? (
+          <EmptyState icon={CalendarClock} title="No active staff">
+            Activate a staff member to see their availability.
+          </EmptyState>
+        ) : (
+          <div className="admin-availability-list">
+            {activeStaff.map((member) => {
+              const { busyDates, conflictDates, upcoming } = getStaffSchedule(
+                member.id,
+                bookings,
+                assignments
+              );
+
+              return (
+                <article key={member.id} className="admin-availability-card">
+                  <header>
+                    <div className="admin-customer-cell">
+                      <span className="admin-customer-avatar">
+                        {initials(member.full_name)}
+                      </span>
+
+                      <div className="admin-customer-meta">
+                        <strong>{member.full_name}</strong>
+                        <span>{member.position}</span>
+                      </div>
+                    </div>
+
+                    <div className="admin-availability-meta">
+                      <span>{upcoming.length} upcoming</span>
+
+                      {conflictDates.size > 0 && (
+                        <span className="admin-warning-badge">
+                          <AlertTriangle size={13} />
+                          {conflictDates.size} conflict
+                          {conflictDates.size === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+                  </header>
+
+                  <div className="admin-availability-grid">
+                    {days.map((day) => {
+                      const busy = busyDates.has(day.iso);
+                      const conflict = conflictDates.has(day.iso);
+
+                      return (
+                        <div
+                          key={day.iso}
+                          className={`admin-availability-day ${
+                            busy ? "busy" : ""
+                          } ${conflict ? "conflict" : ""}`}
+                          title={
+                            conflict
+                              ? "Scheduling conflict on this day"
+                              : busy
+                              ? "Booked"
+                              : "Available"
+                          }
+                        >
+                          <span className="admin-availability-day-label">
+                            {day.weekday}
+                          </span>
+                          <span className="admin-availability-day-date">
+                            {day.day}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const renderPerformanceTab = () => (
+    <section className="admin-bookings-panel">
+      <div className="admin-panel-header">
+        <div>
+          <h2>Performance Overview</h2>
+          <p>Assignment outcomes and completion rates per team member.</p>
+        </div>
+      </div>
+
+      {staff.length === 0 ? (
+        <EmptyState icon={BarChart3} title="No performance data">
+          Add staff and assign bookings to see completion metrics.
+        </EmptyState>
+      ) : (
+        <div className="admin-performance-grid">
+          {staff.map((member) => {
+            const live = Object.values(assignments).filter((team) =>
+              team?.some((item) => item.staffId === member.id)
+            ).length;
+
+            const assigned = (member.seedStats?.assigned || 0) + live;
+            const completed = member.seedStats?.completed || 0;
+            const ongoing = (member.seedStats?.ongoing || 0) + live;
+            const cancelled = member.seedStats?.cancelled || 0;
+            const rate = assigned
+              ? Math.round((completed / assigned) * 100)
+              : 0;
+
+            return (
+              <article key={member.id} className="admin-performance-card">
+                <header>
+                  <div className="admin-customer-cell">
+                    <span className="admin-customer-avatar">
+                      {initials(member.full_name)}
+                    </span>
+
+                    <div className="admin-customer-meta">
+                      <strong>{member.full_name}</strong>
+                      <span>{member.position}</span>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`admin-booking-status ${
+                      member.status === "active" ? "confirmed" : "cancelled"
+                    }`}
+                  >
+                    {member.status === "active" ? "Active" : "Inactive"}
+                  </span>
+                </header>
+
+                <div className="admin-performance-stats">
+                  <div>
+                    <strong>{assigned}</strong>
+                    <span>Assigned</span>
+                  </div>
+                  <div>
+                    <strong>{completed}</strong>
+                    <span>Completed</span>
+                  </div>
+                  <div>
+                    <strong>{ongoing}</strong>
+                    <span>Ongoing</span>
+                  </div>
+                  <div>
+                    <strong>{cancelled}</strong>
+                    <span>Cancelled</span>
+                  </div>
+                </div>
+
+                <div className="admin-performance-bar-wrap">
+                  <div className="admin-performance-bar-label">
+                    <span>Completion rate</span>
+                    <strong>{rate}%</strong>
+                  </div>
+
+                  <div className="admin-performance-bar">
+                    <div
+                      className="admin-performance-bar-fill"
+                      style={{ width: `${rate}%` }}
+                    />
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+
+  const renderStaff = () => {
+    const staffCards = [
+      {
+        title: "Total Staff",
+        value: staffCounts.total,
+        note: "Everyone on the team",
+        icon: Users,
+        color: "cyan",
+      },
+      {
+        title: "Active Staff",
+        value: staffCounts.active,
+        note: "Currently employed",
+        icon: UserCheck,
+        color: "blue",
+      },
+      {
+        title: "Assigned Jobs",
+        value: staffCounts.currentlyAssigned,
+        note: "Bookings with a team",
+        icon: ClipboardList,
+        color: "violet",
+      },
+      {
+        title: "Available Staff",
+        value: staffCounts.available,
+        note: "No active assignments",
+        icon: UserMinus,
+        color: "green",
+      },
+    ];
+
+    const staffTabs = [
+      { key: "directory", label: "Staff Directory", icon: Users },
+      { key: "assignments", label: "Assignments", icon: ClipboardList },
+      { key: "availability", label: "Availability", icon: CalendarClock },
+      { key: "performance", label: "Performance", icon: BarChart3 },
+    ];
+
+    return (
+      <>
+        <PageHeader
+          eyebrow="Team management"
+          title="Staff Management"
+          description="Manage your team, assignments and staff performance."
+        >
+          <button
+            type="button"
+            className="admin-view-all"
+            onClick={openAddStaff}
+          >
+            <UserPlus size={16} />
+            Add New Staff
+          </button>
+        </PageHeader>
+
+        {(actionMessage || actionError) && (
+          <div
+            className="admin-bookings-error"
+            role={actionError ? "alert" : "status"}
+          >
+            {actionError || actionMessage}
+          </div>
+        )}
+
+        <section className="admin-stats-grid">
+          {staffCards.map(renderStatCard)}
+        </section>
+
+        <div className="admin-tabs" role="tablist" aria-label="Staff views">
+          {staffTabs.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={staffTab === key}
+              className={`admin-tab ${staffTab === key ? "active" : ""}`}
+              onClick={() => setStaffTab(key)}
+            >
+              <Icon size={16} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {staffTab === "directory" && renderStaffDirectory()}
+        {staffTab === "assignments" && renderAssignmentsTab()}
+        {staffTab === "availability" && renderAvailabilityTab()}
+        {staffTab === "performance" && renderPerformanceTab()}
+      </>
+    );
+  };
+
+  /* ---------------------------------------------------------------- */
   /* Page: Services                                                   */
   /* ---------------------------------------------------------------- */
 
@@ -1966,8 +3263,9 @@ onSubmit={handleCreateCustomer}    >
             <p className="admin-stat-title">{service.name}</p>
             <h2>{formatKsh(service.price)}</h2>
             <span className="admin-stat-note">
-              {service.bookings} {service.bookings === 1 ? "booking" : "bookings"}{" "}
-              · {service.completed} completed
+              {service.bookings}{" "}
+              {service.bookings === 1 ? "booking" : "bookings"} ·{" "}
+              {service.completed} completed
             </span>
           </article>
         ))}
@@ -2039,7 +3337,6 @@ onSubmit={handleCreateCustomer}    >
       </section>
     </>
   );
-
 
   /* ---------------------------------------------------------------- */
   /* Page: Settings                                                   */
@@ -2198,6 +3495,8 @@ onSubmit={handleCreateCustomer}    >
         return renderBookings();
       case "Customers":
         return renderCustomers();
+      case "Staff":
+        return renderStaff();
       case "Services":
         return renderServices();
       case "Settings":
@@ -2363,10 +3662,7 @@ onSubmit={handleCreateCustomer}    >
                   </div>
 
                   <div className="admin-dropdown-footer">
-                    <button
-                      type="button"
-                      onClick={() => goTo("Bookings")}
-                    >
+                    <button type="button" onClick={() => goTo("Bookings")}>
                       View all bookings
                     </button>
                   </div>
@@ -2634,8 +3930,325 @@ onSubmit={handleCreateCustomer}    >
           </section>
         </div>
       )}
+
+      {showAddStaff && (
+        <div className="admin-modal-backdrop" onClick={closeStaffForm}>
+          <section
+            className="admin-booking-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="staff-form-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="admin-modal-close"
+              onClick={closeStaffForm}
+              aria-label="Close staff form"
+            >
+              <X size={16} />
+            </button>
+
+            <h2 id="staff-form-title">
+              {editingStaff ? "Edit Staff Member" : "Add New Staff"}
+            </h2>
+
+            <form className="admin-customer-form" onSubmit={handleStaffSubmit}>
+              <label>
+                Full name
+                <input
+                  type="text"
+                  value={newStaff.full_name}
+                  onChange={(event) =>
+                    setNewStaff({
+                      ...newStaff,
+                      full_name: event.target.value,
+                    })
+                  }
+                  placeholder="Staff member's full name"
+                  autoComplete="name"
+                  required
+                />
+              </label>
+
+              <label>
+                Email address
+                <input
+                  type="email"
+                  value={newStaff.email}
+                  onChange={(event) =>
+                    setNewStaff({ ...newStaff, email: event.target.value })
+                  }
+                  placeholder="staff@visionarystudios.co.ke"
+                  autoComplete="email"
+                  required
+                />
+              </label>
+
+              <label>
+                Phone number
+                <input
+                  type="tel"
+                  value={newStaff.phone}
+                  onChange={(event) =>
+                    setNewStaff({ ...newStaff, phone: event.target.value })
+                  }
+                  placeholder="+254 ..."
+                  autoComplete="tel"
+                  required
+                />
+              </label>
+
+              <label>
+                Staff position
+                <select
+                  value={newStaff.position}
+                  onChange={(event) =>
+                    setNewStaff({
+                      ...newStaff,
+                      position: event.target.value,
+                    })
+                  }
+                  required
+                >
+                  <option value="">Select position</option>
+                  {STAFF_POSITIONS.map((position) => (
+                    <option key={position} value={position}>
+                      {position}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {staffFormError && (
+                <p className="admin-bookings-error" role="alert">
+                  {staffFormError}
+                </p>
+              )}
+
+              <button type="submit" className="admin-view-all">
+                <UserPlus size={16} />
+                {editingStaff ? "Save changes" : "Add staff member"}
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {viewingStaff && (
+        <div
+          className="admin-modal-backdrop"
+          onClick={() => setViewingStaff(null)}
+        >
+          <section
+            className="admin-booking-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="staff-profile-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="admin-modal-close"
+              onClick={() => setViewingStaff(null)}
+              aria-label="Close staff profile"
+            >
+              <X size={16} />
+            </button>
+
+            <h2 id="staff-profile-title">Staff Profile</h2>
+
+            <div className="admin-modal-grid">
+              <p>
+                <strong>Name:</strong> {viewingStaff.full_name}
+              </p>
+              <p>
+                <strong>Email:</strong> {viewingStaff.email}
+              </p>
+              <p>
+                <strong>Phone:</strong> {viewingStaff.phone}
+              </p>
+              <p>
+                <strong>Position:</strong> {viewingStaff.position}
+              </p>
+              <p>
+                <strong>Status:</strong>{" "}
+                {viewingStaff.status === "active" ? "Active" : "Inactive"}
+              </p>
+              <p>
+                <strong>Joined:</strong> {formatDate(viewingStaff.joined_at)}
+              </p>
+              <p>
+                <strong>Assigned jobs:</strong>{" "}
+                {getStaffAssignedCount(viewingStaff.id)}
+              </p>
+            </div>
+
+            <div className="admin-booking-actions">
+              <button
+                type="button"
+                className="admin-view-all"
+                onClick={() => {
+                  const member = viewingStaff;
+                  setViewingStaff(null);
+                  openEditStaff(member);
+                }}
+              >
+                <Pencil size={16} />
+                Edit details
+              </button>
+
+              <button
+                type="button"
+                className={`admin-view-all ${
+                  viewingStaff.status === "active"
+                    ? "admin-row-button--danger"
+                    : ""
+                }`}
+                onClick={() => toggleStaffStatus(viewingStaff)}
+              >
+                {viewingStaff.status === "active" ? (
+                  <>
+                    <UserX size={16} />
+                    Deactivate
+                  </>
+                ) : (
+                  <>
+                    <UserCheck size={16} />
+                    Reactivate
+                  </>
+                )}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {assigningBooking && (
+        <div className="admin-modal-backdrop" onClick={closeAssignment}>
+          <section
+            className="admin-booking-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="assignment-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="admin-modal-close"
+              onClick={closeAssignment}
+              aria-label="Close assignment form"
+            >
+              <X size={16} />
+            </button>
+
+            <h2 id="assignment-title">Assign Team</h2>
+
+            <p className="admin-muted">
+              {assigningBooking.full_name || "Booking"} ·{" "}
+              {assigningBooking.service || "Session"} ·{" "}
+              {formatBookingDate(assigningBooking)}
+            </p>
+
+            <div className="admin-assignment-list">
+              {staff.filter((member) => member.status === "active").length ===
+              0 ? (
+                <p className="admin-muted">
+                  No active staff available. Activate or add a staff member
+                  first.
+                </p>
+              ) : (
+                staff
+                  .filter((member) => member.status === "active")
+                  .map((member) => {
+                    const selected = assignmentDraft.find(
+                      (item) => item.staffId === member.id
+                    );
+
+                    const conflict = selected
+                      ? getConflictForStaff(member.id, assigningBooking)
+                      : null;
+
+                    return (
+                      <div key={member.id} className="admin-assignment-row">
+                        <label className="admin-assignment-check">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selected)}
+                            onChange={() => toggleAssignmentStaff(member)}
+                          />
+
+                          <span className="admin-customer-avatar">
+                            {initials(member.full_name)}
+                          </span>
+
+                          <div className="admin-customer-meta">
+                            <strong>{member.full_name}</strong>
+                            <span>{member.position}</span>
+                          </div>
+                        </label>
+
+                        {selected && (
+                          <div className="admin-assignment-responsibility">
+                            <input
+                              type="text"
+                              value={selected.responsibility}
+                              onChange={(event) =>
+                                updateAssignmentResponsibility(
+                                  member.id,
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Responsibility (e.g. Photography coverage)"
+                              aria-label={`Responsibility for ${member.full_name}`}
+                            />
+
+                            {conflict && (
+                              <span className="admin-warning-badge">
+                                <AlertTriangle size={13} />
+                                Already booked on{" "}
+                                {formatBookingDate(conflict)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            {assignmentError && (
+              <p className="admin-bookings-error" role="alert">
+                {assignmentError}
+              </p>
+            )}
+
+            <div className="admin-booking-actions">
+              <button
+                type="button"
+                className="admin-view-all"
+                onClick={saveAssignment}
+              >
+                <Check size={16} />
+                Save assignment
+              </button>
+
+              <button
+                type="button"
+                className="admin-view-all"
+                onClick={closeAssignment}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
+
+
 
 export default AdminDashboard;

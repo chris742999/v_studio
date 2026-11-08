@@ -34,6 +34,7 @@
     "react-intersection-observer": "^10.0.3",
     "react-parallax-tilt": "^1.7.333",
     "react-router-dom": "^7.18.1",
+    "resend": "^6.35.0",
     "three": "^0.185.1"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import bookingRoutes from "./booking-routes.js";
 import adminRoutes from "./admin-routes.js";
 import authRoutes from "./auth-routes.js";
+import paymentRoutes from "./payment-routes.js";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/payments", paymentRoutes);
 
 const studioContext = `
 You are the AI assistant for Visionary Studios.

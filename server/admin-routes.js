@@ -7,6 +7,7 @@ import {
   authenticateUser,
   requireAdmin,
 } from "./auth-middleware.js";
+import { sendStaffAssignmentEmail } from "./email-service.js";
 
 const router = express.Router();
 
@@ -251,5 +252,429 @@ router.patch("/bookings/:id/status", async (req, res) => {
     });
   }
 });
+// --------------------------------------------------
+// STAFF MANAGEMENT
+// --------------------------------------------------
+
+// GET /api/admin/staff
+// Retrieve all staff members.
+router.get("/staff", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM public.staff
+      ORDER BY created_at DESC
+    `);
+
+    res.json({ staff: result.rows });
+  } catch (error) {
+    console.error("Error loading staff:", error);
+    res.status(500).json({ error: "Unable to load staff members." });
+  }
+});
+
+// POST /api/admin/staff
+// Register a new staff member.
+router.post("/staff", async (req, res) => {
+  try {
+    const { full_name, email, phone, position } = req.body;
+
+    const allowedPositions = [
+      "Photographer",
+      "Videographer",
+      "Drone Operator",
+      "Photography Assistant",
+    ];
+
+    if (
+      !full_name?.trim() ||
+      !email?.trim() ||
+      !phone?.trim() ||
+      !position
+    ) {
+      return res.status(400).json({
+        error: "Full name, email, phone and position are required.",
+      });
+    }
+
+    if (!allowedPositions.includes(position)) {
+      return res.status(400).json({
+        error: "Please select a valid staff position.",
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO public.staff
+        (full_name, email, phone, position)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [
+        full_name.trim(),
+        email.trim().toLowerCase(),
+        phone.trim(),
+        position,
+      ]
+    );
+
+    res.status(201).json({ staff: result.rows[0] });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({
+        error: "A staff member with this email already exists.",
+      });
+    }
+
+    console.error("Error creating staff:", error);
+    res.status(500).json({ error: "Unable to register staff member." });
+  }
+});
+
+// PATCH /api/admin/staff/:id
+// Update staff details.
+router.patch("/staff/:id", async (req, res) => {
+  try {
+    const staffId = Number(req.params.id);
+    const { full_name, email, phone, position } = req.body;
+
+    const allowedPositions = [
+      "Photographer",
+      "Videographer",
+      "Drone Operator",
+      "Photography Assistant",
+    ];
+
+    if (!Number.isSafeInteger(staffId) || staffId <= 0) {
+      return res.status(400).json({ error: "Invalid staff ID." });
+    }
+
+    if (
+      !full_name?.trim() ||
+      !email?.trim() ||
+      !phone?.trim() ||
+      !allowedPositions.includes(position)
+    ) {
+      return res.status(400).json({
+        error: "Please provide valid staff details.",
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE public.staff
+       SET full_name = $1,
+           email = $2,
+           phone = $3,
+           position = $4,
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [
+        full_name.trim(),
+        email.trim().toLowerCase(),
+        phone.trim(),
+        position,
+        staffId,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Staff member not found." });
+    }
+
+    res.json({ staff: result.rows[0] });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({
+        error: "Another staff member already uses this email.",
+      });
+    }
+
+    console.error("Error updating staff:", error);
+    res.status(500).json({ error: "Unable to update staff member." });
+  }
+});
+
+// PATCH /api/admin/staff/:id/status
+// Activate or deactivate a staff member.
+router.patch("/staff/:id/status", async (req, res) => {
+  try {
+    const staffId = Number(req.params.id);
+    const { status } = req.body;
+
+    if (!Number.isSafeInteger(staffId) || staffId <= 0) {
+      return res.status(400).json({ error: "Invalid staff ID." });
+    }
+
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).json({
+        error: "Status must be active or inactive.",
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE public.staff
+       SET status = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [status, staffId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Staff member not found." });
+    }
+
+    res.json({ staff: result.rows[0] });
+  } catch (error) {
+    console.error("Error changing staff status:", error);
+    res.status(500).json({ error: "Unable to update staff status." });
+  }
+});
+// --------------------------------------------------
+// BOOKING STAFF ASSIGNMENTS
+// --------------------------------------------------
+
+// POST /api/admin/bookings/:id/assignments
+// Save or update staff assignments for a booking.
+// GET /api/admin/bookings/:id/assignments
+// Retrieve staff assignments for a booking.
+router.get("/bookings/:id/assignments", async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+
+    if (!/^[1-9]\d*$/.test(bookingId)) {
+      return res.status(400).json({
+        error: "Invalid booking ID.",
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         ba.id,
+         ba.booking_id,
+         ba.staff_id,
+         ba.responsibility,
+         ba.status,
+         s.full_name,
+         s.email,
+         s.position
+       FROM public.booking_assignments ba
+       JOIN public.staff s ON s.id = ba.staff_id
+       WHERE ba.booking_id = $1
+         AND ba.status <> 'cancelled'
+       ORDER BY ba.assigned_at`,
+      [bookingId]
+    );
+
+    return res.json({
+      assignments: result.rows,
+    });
+  } catch (error) {
+    console.error("Loading booking assignments failed:", error);
+
+    return res.status(500).json({
+      error: "Unable to retrieve booking assignments.",
+    });
+  }
+});
+
+router.post("/bookings/:id/assignments", async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const bookingId = req.params.id;
+    const { assignments } = req.body ?? {};
+
+    if (!/^[1-9]\d*$/.test(bookingId)) {
+      return res.status(400).json({
+        error: "Invalid booking ID.",
+      });
+    }
+
+    if (
+      !Array.isArray(assignments) ||
+      assignments.length === 0
+    ) {
+      return res.status(400).json({
+        error: "Select at least one staff member.",
+      });
+    }
+
+    const staffIds = assignments.map((item) =>
+      String(item.staffId)
+    );
+
+    if (
+      staffIds.some((id) => !/^[1-9]\d*$/.test(id)) ||
+      new Set(staffIds).size !== staffIds.length ||
+      assignments.some(
+        (item) =>
+          typeof item.responsibility !== "string" ||
+          !item.responsibility.trim()
+      )
+    ) {
+      return res.status(400).json({
+        error: "Invalid staff assignment details.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    // Retrieve booking details for the staff emails.
+    const bookingResult = await client.query(
+      `SELECT
+         id,
+         full_name,
+         service,
+         preferred_date,
+         preferred_time,
+         location
+       FROM public.bookings
+       WHERE id = $1
+       FOR UPDATE`,
+      [bookingId]
+    );
+
+    if (bookingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        error: "Booking not found.",
+      });
+    }
+
+    const booking = bookingResult.rows[0];
+
+    const staffResult = await client.query(
+      `SELECT id
+       FROM public.staff
+       WHERE id = ANY($1::bigint[])
+         AND status = 'active'`,
+      [staffIds]
+    );
+
+    if (staffResult.rows.length !== staffIds.length) {
+      await client.query("ROLLBACK");
+
+      return res.status(400).json({
+        error: "One or more selected staff members are unavailable.",
+      });
+    }
+
+    // Cancel previously assigned staff who are no longer selected.
+    await client.query(
+      `UPDATE public.booking_assignments
+       SET status = 'cancelled',
+           updated_at = NOW()
+       WHERE booking_id = $1
+         AND NOT (staff_id = ANY($2::bigint[]))
+         AND status <> 'cancelled'`,
+      [bookingId, staffIds]
+    );
+
+    // Save or update each staff assignment.
+    for (const item of assignments) {
+      await client.query(
+        `INSERT INTO public.booking_assignments
+          (booking_id, staff_id, responsibility, status)
+         VALUES ($1, $2, $3, 'assigned')
+         ON CONFLICT (booking_id, staff_id)
+         DO UPDATE SET
+           responsibility = EXCLUDED.responsibility,
+           status = CASE
+             WHEN public.booking_assignments.status = 'cancelled'
+             THEN 'assigned'
+             ELSE public.booking_assignments.status
+           END,
+           updated_at = NOW()`,
+        [
+          bookingId,
+          item.staffId,
+          item.responsibility.trim(),
+        ]
+      );
+    }
+
+    const savedResult = await client.query(
+      `SELECT
+         ba.id,
+         ba.booking_id,
+         ba.staff_id,
+         ba.responsibility,
+         ba.status,
+         s.full_name,
+         s.email,
+         s.position
+       FROM public.booking_assignments ba
+       JOIN public.staff s ON s.id = ba.staff_id
+       WHERE ba.booking_id = $1
+         AND ba.status <> 'cancelled'
+       ORDER BY ba.assigned_at`,
+      [bookingId]
+    );
+
+    // Commit assignments before attempting email delivery.
+    await client.query("COMMIT");
+
+    // Send a separate email to each assigned staff member.
+    const emailResults = await Promise.allSettled(
+      savedResult.rows.map((item) =>
+        sendStaffAssignmentEmail({
+          staff: {
+            full_name: item.full_name,
+            email: item.email,
+            position: item.position,
+          },
+          booking,
+          assignment: {
+            responsibility: item.responsibility,
+          },
+        })
+      )
+    );
+
+    const emailNotifications = emailResults.map(
+      (result, index) => {
+        const staffMember = savedResult.rows[index];
+
+        if (result.status === "fulfilled") {
+          return {
+            staff: staffMember.full_name,
+            email: staffMember.email,
+            status: "sent",
+          };
+        }
+
+        console.error(
+          `Email to ${staffMember.email} failed:`,
+          result.reason?.message
+        );
+
+        return {
+          staff: staffMember.full_name,
+          email: staffMember.email,
+          status: "failed",
+          error: result.reason?.message || "Email delivery failed.",
+        };
+      }
+    );
+
+    return res.json({
+      message: "Staff assignments saved successfully.",
+      assignments: savedResult.rows,
+      emailNotifications,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+
+    console.error("Saving staff assignments failed:", error);
+
+    return res.status(500).json({
+      error: "Unable to save staff assignments.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
 
 export default router;
